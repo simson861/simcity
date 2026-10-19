@@ -43,6 +43,8 @@ const UI = {
   graphSel: { res: true, com: true, ind: true, money: true, crime: true, pollution: true },
   lastMsg: null,
   cheatBuf: '',
+  msgLog: [],            // Meldungsverlauf (neueste zuerst)
+  suppressClickUntil: 0, // verhindert "Durchklicken" nach Menüauswahl per Touch
 
   init(city, view) {
     this.city = city; this.view = view;
@@ -51,16 +53,43 @@ const UI = {
     this.buildTools();
     this.bindMap();
     this.bindKeys();
-    document.getElementById('st-msg').addEventListener('click', () => {
-      if (this.lastMsg && this.lastMsg.x !== undefined) this.view.centerOn(this.lastMsg.x, this.lastMsg.y);
+    document.getElementById('st-msg').addEventListener('click', e => {
+      const m = this.lastMsg;
+      if (m && m.x !== undefined && e.currentTarget.textContent === m.text) this.view.centerOn(m.x, m.y);
+      else this.openLog();
     });
+    document.getElementById('st-rci').addEventListener('click', () => this.demandInfo());
     document.getElementById('fileinput').addEventListener('change', e => this.importFile(e));
-    window.addEventListener('resize', () => this.view.resize());
+    const onResize = () => { this.view.resize(); this.closeMenus(); this.fitWindows(); };
+    window.addEventListener('resize', onResize);
+    if (window.ResizeObserver) new ResizeObserver(() => this.view.resize()).observe(document.getElementById('mapwrap'));
+    window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
     document.addEventListener('pointerdown', e => {
       if (!e.target.closest('.menu')) this.closeMenus();
       Sound.init();
     }, true);
+    document.addEventListener('click', e => {
+      if (e.isTrusted && performance.now() < this.suppressClickUntil) {
+        this.suppressClickUntil = 0;   // nur den einen Klick direkt nach dem Antippen schlucken
+        e.preventDefault(); e.stopPropagation();
+      }
+    }, true);
   },
+
+  /** Ist localStorage nutzbar? (In Sandbox-iframes oder bei blockierten Cookies nicht.) */
+  storageOK() {
+    if (this._storageOK !== undefined) return this._storageOK;
+    try {
+      const k = 'simcity89-test';
+      window.localStorage.setItem(k, '1');
+      window.localStorage.removeItem(k);
+      this._storageOK = true;
+    } catch (e) { this._storageOK = false; }
+    return this._storageOK;
+  },
+  lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
+  lsSet(k, v) { window.localStorage.setItem(k, v); },   // wirft bei Fehler – Aufrufer fängt ab
+  lsDel(k) { try { window.localStorage.removeItem(k); } catch (e) { /* egal */ } },
 
   get paused() { return this.city.speed === 0 || this.modal > 0; },
 
@@ -81,7 +110,7 @@ const UI = {
         ['Aus Datei importieren…', () => document.getElementById('fileinput').click()],
         ['-'],
         ['Stadt umbenennen…', () => this.renameCity()],
-        ['Über SimCity…', () => this.about()],
+        ['Über SimCity…', () => this.about(), 'F1'],
       ]],
       ['Optionen', [
         ['Auto-Abriss', () => { c.autoBulldoze = !c.autoBulldoze; }, null, () => c.autoBulldoze],
@@ -106,8 +135,9 @@ const UI = {
       ['Fenster', [
         ['Übersichtskarte', () => this.openMap(), 'M'],
         ['Grafiken', () => this.openGraphs(), 'G'],
-        ['Haushalt', () => this.openBudget(false), 'B'],
+        ['Haushalt', () => this.openBudget(false), 'Umschalt+B'],
         ['Bewertung', () => this.openEvaluation(), 'E'],
+        ['Meldungen', () => this.openLog(), 'N'],
       ]],
       ['Tempo', [
         ['Pause', () => this.setSpeed(0), 'Leertaste', () => c.speed === 0],
@@ -123,16 +153,13 @@ const UI = {
       t.className = 'mtitle'; t.textContent = title;
       const list = document.createElement('div');
       list.className = 'mlist';
+      const openMenu = () => { this.closeMenus(); this.refreshMenu(list, items); m.classList.add('open'); this.placeMenu(list); };
       t.addEventListener('pointerdown', e => {
         e.preventDefault();
-        const open = m.classList.contains('open');
-        this.closeMenus();
-        if (!open) { this.refreshMenu(list, items); m.classList.add('open'); }
+        if (m.classList.contains('open')) this.closeMenus(); else openMenu();
       });
-      t.addEventListener('pointerenter', () => {
-        if (document.querySelector('.menu.open') && !m.classList.contains('open')) {
-          this.closeMenus(); this.refreshMenu(list, items); m.classList.add('open');
-        }
+      t.addEventListener('pointerenter', e => {
+        if (e.pointerType === 'mouse' && document.querySelector('.menu.open') && !m.classList.contains('open')) openMenu();
       });
       m.appendChild(t); m.appendChild(list);
       mb.appendChild(m);
@@ -150,12 +177,27 @@ const UI = {
       d.className = 'mitem' + (it[3] && it[3]() ? ' checked' : '');
       d.textContent = it[0];
       if (it[2]) { const k = document.createElement('span'); k.className = 'key'; k.textContent = it[2]; d.appendChild(k); }
-      d.addEventListener('pointerup', e => { e.stopPropagation(); this.closeMenus(); it[1](); this.updateStatus(); });
+      d.addEventListener('pointerup', e => {
+        e.stopPropagation();
+        this.closeMenus();
+        // Der nachfolgende "click" (Touch) soll nicht auf dem Element darunter landen
+        if (e.pointerType !== 'mouse') this.suppressClickUntil = performance.now() + 350;
+        it[1]();
+        this.updateStatus();
+      });
       list.appendChild(d);
     }
   },
 
   closeMenus() { document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open')); },
+
+  /** Aufgeklapptes Menü im Bildschirm halten (schmale Displays). */
+  placeMenu(list) {
+    list.style.left = '0px';
+    const r = list.getBoundingClientRect();
+    const over = r.right - window.innerWidth + 2;
+    if (over > 0) list.style.left = -Math.min(over, r.left) + 'px';
+  },
 
   setSpeed(s) { this.city.speed = s; this.updateStatus(); },
 
@@ -216,46 +258,132 @@ const UI = {
     document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === id));
     const t = TOOLS.find(x => x.id === id);
     document.getElementById('toolname').textContent = t.name;
-    document.getElementById('toolcost').textContent = t.cost ? fmtMoney(t.cost) + (t.note ? '' : '') : ' ';
+    document.getElementById('toolcost').innerHTML = t.cost
+      ? fmtMoney(t.cost) + (t.line && t.id !== 'bulldozer' ? ' / Feld' : '') + (t.note ? `<br><span class="note">${t.note}</span>` : '')
+      : '&nbsp;';
     this.view.canvas.style.cursor = id === 'pan' ? 'grab' : id === 'query' ? 'help' : 'crosshair';
   },
 
   // =================== Karteneingabe ===================
+  /* Maus: Linksklick = Werkzeug, Rechts/Mitte = verschieben, Rad = Zoom.
+   * Touch: ein Finger = Werkzeug (Linien durch Ziehen), zwei Finger = verschieben + Pinch-Zoom.
+   * Bei Touch wird das Werkzeug erst nach kurzer Verzögerung bzw. Bewegung angewendet,
+   * damit ein beginnender Zwei-Finger-Griff nichts baut. Flächen-Werkzeuge bauen beim Loslassen. */
   bindMap() {
     const cv = this.view.canvas;
-    let drag = null;     // {mode:'pan'|'tool', ...}
+    const v = this.view;
+    let drag = null;          // {mode:'pan'|'tool'|'pending'|'pinch', ...}
+    const touches = new Map(); // pointerId -> [sx, sy]
     const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    const curTool = () => TOOLS.find(t => t.id === this.tool);
+
+    const startPinch = () => {
+      const pts = [...touches.values()];
+      const [a, b] = pts;
+      drag = {
+        mode: 'pinch',
+        mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2,
+        dist: Math.max(10, Math.hypot(a[0] - b[0], a[1] - b[1])),
+        cx: v.camX, cy: v.camY,
+      };
+      this.hideTip();
+      v.cursor = null;
+    };
+    const startTool = (d) => {
+      // Werkzeug am Startfeld anwenden (Touch: nach Verzögerung)
+      clearTimeout(d.timer);
+      d.mode = 'tool';
+      const tool = curTool();
+      if (tool.line) this.applyAt(tool, d.lx, d.ly, d);
+    };
+    const blocked = () => {
+      if (this.modal > 0) { this.status('Bitte zuerst das Dialogfenster schließen.'); Sound.error(); return true; }
+      return false;
+    };
 
     cv.addEventListener('contextmenu', e => e.preventDefault());
     cv.addEventListener('pointerdown', e => {
       Sound.init();
-      cv.setPointerCapture(e.pointerId);
+      this.closeMenus();
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
       const [sx, sy] = pos(e);
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, [sx, sy]);
+        if (touches.size >= 2) {
+          // Zweiter Finger: laufende Aktion abbrechen, Pinch/Verschieben beginnen
+          if (drag && drag.timer) clearTimeout(drag.timer);
+          if (drag && drag.mode === 'tool' && drag.spent) this.status(`Kosten: ${fmtMoney(drag.spent)}`);
+          startPinch();
+          return;
+        }
+      }
       if (e.button === 1 || e.button === 2 || this.tool === 'pan') {
-        drag = { mode: 'pan', sx, sy, cx: this.view.camX, cy: this.view.camY };
+        drag = { mode: 'pan', sx, sy, cx: v.camX, cy: v.camY };
         cv.style.cursor = 'grabbing';
         return;
       }
       if (e.button !== 0) return;
-      const [tx, ty] = this.view.screenToTile(sx, sy);
-      const tool = TOOLS.find(t => t.id === this.tool);
-      if (this.tool === 'query') { this.query(tx, ty); return; }
-      drag = { mode: 'tool', lx: tx, ly: ty, errShown: false, spent: 0 };
-      this.applyAt(tool, tx, ty, drag);
-    });
-    cv.addEventListener('pointermove', e => {
-      const [sx, sy] = pos(e);
-      const [tx, ty] = this.view.screenToTile(sx, sy);
-      this.updateCursor(tx, ty);
-      if (!drag) return;
-      if (drag.mode === 'pan') {
-        const ts = this.view.ts;
-        this.view.camX = drag.cx - (sx - drag.sx) / ts;
-        this.view.camY = drag.cy - (sy - drag.sy) / ts;
-        this.view.clampCam();
+      const [tx, ty] = v.screenToTile(sx, sy);
+      const tool = curTool();
+      if (e.pointerType === 'touch') {
+        this.updateCursor(tx, ty);
+        this.showTip(sx, sy, true);
+        drag = { mode: 'pending', sx, sy, lx: tx, ly: ty, errShown: false, spent: 0, touch: true };
+        if (tool.line) {
+          const d = drag;
+          d.timer = setTimeout(() => { if (drag === d && d.mode === 'pending' && !blocked()) startTool(d); }, 140);
+        }
         return;
       }
-      const tool = TOOLS.find(t => t.id === this.tool);
+      if (this.tool === 'query') { this.query(tx, ty); return; }
+      if (blocked()) return;
+      drag = { mode: 'tool', lx: tx, ly: ty, errShown: false, spent: 0 };
+      this.applyAt(tool, tx, ty, drag);
+      this.showTip(sx, sy, false, drag);
+    });
+
+    cv.addEventListener('pointermove', e => {
+      const [sx, sy] = pos(e);
+      if (e.pointerType === 'touch' && touches.has(e.pointerId)) touches.set(e.pointerId, [sx, sy]);
+      if (drag && drag.mode === 'pinch') {
+        if (touches.size < 2) return;
+        const [a, b] = [...touches.values()];
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        const dist = Math.max(10, Math.hypot(a[0] - b[0], a[1] - b[1]));
+        const ratio = dist / drag.dist;
+        // Zoomstufen sind ganzzahlig: bei deutlicher Änderung eine Stufe wechseln
+        const z0 = v.zoom;
+        if (ratio > 1.3) v.setZoom(v.zoom + 1, mx, my);
+        else if (ratio < 0.77) v.setZoom(v.zoom - 1, mx, my);
+        if (v.zoom !== z0 || ratio > 1.3 || ratio < 0.77) {
+          drag.dist = dist; drag.mx = mx; drag.my = my; drag.cx = v.camX; drag.cy = v.camY;
+          return;
+        }
+        v.camX = drag.cx - (mx - drag.mx) / v.ts;
+        v.camY = drag.cy - (my - drag.my) / v.ts;
+        v.clampCam();
+        return;
+      }
+      if (e.pointerType === 'touch' && !drag) return;   // Touch ohne Aktion: nichts
+      const [tx, ty] = v.screenToTile(sx, sy);
+      this.updateCursor(tx, ty);
+      if (!drag) { if (e.pointerType === 'mouse') this.showTip(sx, sy); return; }
+      if (drag.mode === 'pan') {
+        const ts = v.ts;
+        v.camX = drag.cx - (sx - drag.sx) / ts;
+        v.camY = drag.cy - (sy - drag.sy) / ts;
+        v.clampCam();
+        return;
+      }
+      const tool = curTool();
+      if (drag.mode === 'pending') {
+        this.showTip(sx, sy, true, drag);
+        if (!tool.line) { drag.lx = tx; drag.ly = ty; return; }   // Fläche folgt dem Finger
+        if (Math.hypot(sx - drag.sx, sy - drag.sy) < 8) return;
+        if (blocked()) { drag = null; return; }
+        startTool(drag);
+      }
+      this.showTip(sx, sy, drag.touch, drag);
       if (!tool.line) return;
       if (tx === drag.lx && ty === drag.ly) return;
       // Linie im 4er-Raster interpolieren (keine diagonalen Lücken)
@@ -267,20 +395,46 @@ const UI = {
         this.applyAt(tool, x, y, drag);
       }
       drag.lx = tx; drag.ly = ty;
+      this.showTip(sx, sy, drag.touch, drag);
     });
-    const end = () => {
-      if (drag && drag.mode === 'pan') this.selectTool(this.tool);
-      if (drag && drag.mode === 'tool' && drag.spent) this.status(`Kosten: ${fmtMoney(drag.spent)}`);
+
+    const end = (e, cancelled) => {
+      if (e.pointerType === 'touch') {
+        touches.delete(e.pointerId);
+        if (drag && drag.mode === 'pinch') {
+          if (touches.size === 0) drag = null;    // erst nach dem letzten Finger beenden
+          return;
+        }
+      }
+      if (!drag) return;
+      if (drag.timer) clearTimeout(drag.timer);
+      if (drag.mode === 'pan') this.selectTool(this.tool);
+      if (drag.mode === 'pending' && !cancelled) {
+        // Touch-Tipp: Abfrage oder Werkzeug an der (letzten) Position
+        const tool = curTool();
+        if (this.tool === 'query') this.query(drag.lx, drag.ly);
+        else if (!blocked()) { drag.mode = 'tool'; this.applyAt(tool, drag.lx, drag.ly, drag); }
+      }
+      if (drag.mode === 'tool' && drag.spent) this.status(`Kosten: ${fmtMoney(drag.spent)}`);
+      const wasTouch = drag.touch;
       drag = null;
+      if (wasTouch) {
+        // Rückmeldung kurz stehen lassen, dann Cursor und Hinweis ausblenden
+        clearTimeout(this.tipTimer);
+        this.tipTimer = setTimeout(() => { if (!drag) { v.cursor = null; this.hideTip(); } }, 900);
+      }
     };
-    cv.addEventListener('pointerup', end);
-    cv.addEventListener('pointercancel', end);
-    cv.addEventListener('pointerleave', () => { this.view.cursor = null; });
+    cv.addEventListener('pointerup', e => end(e, false));
+    cv.addEventListener('pointercancel', e => end(e, true));
+    cv.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { v.cursor = null; this.hideTip(); } });
     cv.addEventListener('wheel', e => {
       e.preventDefault();
       const [sx, sy] = pos(e);
-      this.view.setZoom(this.view.zoom + (e.deltaY < 0 ? 1 : -1), sx, sy);
+      if (e.ctrlKey && Math.abs(e.deltaY) < 4) return;   // feines Trackpad-Pinch nicht übersteuern
+      v.setZoom(v.zoom + (e.deltaY < 0 ? 1 : -1), sx, sy);
     }, { passive: false });
+    // iOS: Gesten-Zoom der Seite unterbinden
+    for (const t of ['gesturestart', 'gesturechange']) cv.addEventListener(t, e => e.preventDefault());
   },
 
   applyAt(tool, x, y, drag) {
@@ -290,33 +444,73 @@ const UI = {
     if (r.ok) {
       if (r.noop) return;
       drag.spent += r.cost || 0;
+      drag.err = null;
       if (tool.id === 'bulldozer') { if (r.zone || (drag.spent % 5) === 1) Sound.bulldoze(); }
       else if (r.zone) Sound.zone();
       else Sound.build();
       if (c.powerDirty) c.powerScan();
-    } else if (r.err && !drag.errShown) {
-      drag.errShown = true;
-      this.status(r.err, true);
-      Sound.error();
+    } else if (r.err) {
+      drag.err = r.err;
+      if (!drag.errShown) {
+        drag.errShown = true;
+        this.status(r.err, true);
+        Sound.error();
+      }
     }
   },
 
   updateCursor(tx, ty) {
     const tool = TOOLS.find(t => t.id === this.tool);
-    if (!tool || tool.id === 'pan') { this.view.cursor = null; return; }
+    if (!tool || tool.id === 'pan') { this.view.cursor = null; this.cursorInfo = null; return; }
     if (tool.zone) {
       const [x0, y0] = this.city.zoneOrigin(tool.zone, tx, ty);
       const chk = this.city.checkZoneSite(tool.zone, x0, y0);
       this.view.cursor = { x: x0, y: y0, size: ZSIZE[tool.zone], ok: chk.ok };
+      this.cursorInfo = { cost: chk.ok ? chk.cost : tool.cost, err: chk.ok ? null : chk.err };
     } else {
       this.view.cursor = { x: tx, y: ty, size: 1 };
+      this.cursorInfo = { cost: tool.cost, err: null, x: tx, y: ty };
     }
   },
 
+  /** Kleiner Hinweis am Mauszeiger/Finger: Werkzeug, Kosten, Summe beim Ziehen, Fehler. */
+  showTip(sx, sy, touch, d) {
+    const tip = document.getElementById('cursortip');
+    if (!tip) return;
+    const tool = TOOLS.find(t => t.id === this.tool);
+    if (!tool || tool.id === 'pan' || (tool.id === 'query' && !touch)) { this.hideTip(); return; }
+    clearTimeout(this.tipTimer);
+    const info = this.cursorInfo || { cost: tool.cost };
+    let html = `<b>${tool.name}</b>`;
+    if (tool.cost) html += ' ' + fmtMoney(info.cost || tool.cost);
+    if (d && d.spent && tool.line) html += `<br>Summe: ${fmtMoney(d.spent)}`;
+    const err = (d && d.err) || info.err;
+    if (err) html += `<br><span class="bad">${err}</span>`;
+    else if (tool.cost && this.city.funds < (info.cost || tool.cost)) html += '<br><span class="bad">Nicht genug Geld!</span>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    const wrap = tip.parentElement.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let x = sx + 16, y = sy + 18;
+    if (touch) { x = sx - tw / 2; y = sy - th - 56; }   // über dem Finger
+    if (x + tw > wrap.width - 2) x = sx - tw - 10;
+    if (y + th > wrap.height - 2) y = sy - th - 10;
+    if (y < 2) y = sy + 40;
+    tip.style.left = Math.max(2, x) + 'px';
+    tip.style.top = Math.max(2, y) + 'px';
+  },
+  hideTip() { const tip = document.getElementById('cursortip'); if (tip) tip.style.display = 'none'; },
+
   bindKeys() {
     window.addEventListener('keydown', e => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      const tg = e.target.tagName;
+      if (tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') {
+        if (e.key === 'Escape') this.closeTopWindow();
+        return;
+      }
       const k = e.key;
+      if (!k || (k.length > 1 && !/^(Arrow\w+|Escape|F1)$/.test(k))) return;   // Umschalt, Strg … ignorieren
+      if (document.getElementById('start-bg')) return;   // Startbildschirm: keine Spieltasten
       // Cheat: FUND
       this.cheatBuf = (this.cheatBuf + k.toUpperCase()).slice(-4);
       if (this.cheatBuf === 'FUND') {
@@ -344,6 +538,8 @@ const UI = {
         case 'G': case 'g': this.toggleWin('graphs', () => this.openGraphs()); return;
         case 'B': this.toggleWin('budget', () => this.openBudget(false)); return;
         case 'E': case 'e': this.toggleWin('eval', () => this.openEvaluation()); return;
+        case 'N': case 'n': this.toggleWin('log', () => this.openLog()); return;
+        case 'F1': case '?': e.preventDefault(); this.toggleWin('about', () => this.about()); return;
       }
       const t = TOOLS.find(x => x.key === k.toLowerCase());
       if (t) this.selectTool(t.id);
@@ -356,7 +552,49 @@ const UI = {
   status(text, alert) {
     const el = document.getElementById('st-msg');
     el.textContent = text;
+    el.title = text + (this.lastMsg && this.lastMsg.text === text && this.lastMsg.x !== undefined
+      ? '\n(Klicken, um zum Ort zu springen)' : '\n(Klicken für alle Meldungen)');
     el.classList.toggle('alert', !!alert);
+  },
+
+  /** Nachfrage (R/C/I) als Text: [Stufe, Pfeil] */
+  demandText(v, max) {
+    const f = v / max;
+    if (f > 0.5) return ['sehr hoch', '▲▲'];
+    if (f > 0.1) return ['hoch', '▲'];
+    if (f >= -0.1) return ['ausgeglichen', '•'];
+    if (f >= -0.5) return ['gering', '▼'];
+    return ['sehr gering', '▼▼'];
+  },
+
+  demandInfo() {
+    const c = this.city;
+    const rows = [['Wohngebiete', c.resValve, 2000, c.resCap, '#30d030'], ['Gewerbegebiete', c.comValve, 1500, c.comCap, '#4080ff'],
+      ['Industriegebiete', c.indValve, 1500, c.indCap, '#c0a000']];
+    const html = `<div style="width:min(280px, calc(100vw - 40px))"><div class="grid2 sunken">${rows.map(([n, v, m, cap, col]) =>
+      `<span><b style="color:${col}">■</b> ${n}</span><span class="r">${this.demandText(v, m)[0]}</span>` +
+      (cap ? `<span class="note" style="grid-column:span 2">${{ Wohngebiete: 'Bremse: Stadion fehlt', Gewerbegebiete: 'Bremse: Flughafen fehlt', Industriegebiete: 'Bremse: Seehafen fehlt' }[n]}</span>` : '')).join('')}</div>
+      <p class="note">Die Nachfrage-Anzeige (R/C/I) zeigt, welche Zonen die Stadt gerade braucht. Hohe Nachfrage = neue Zonen dieses Typs wachsen schnell.</p></div>`;
+    this.closeWin('demand');
+    this.dialog('demand', 'Nachfrage', html, [['OK', null, true]], { modal: false });
+  },
+
+  updateDemand() {
+    const c = this.city;
+    const el = document.getElementById('st-rci');
+    const parts = [['R', c.resValve, 2000, 'Wohnen', c.resCap && 'Stadion fehlt'], ['C', c.comValve, 1500, 'Gewerbe', c.comCap && 'Flughafen fehlt'],
+      ['I', c.indValve, 1500, 'Industrie', c.indCap && 'Seehafen fehlt']];
+    const key = parts.map(p => this.demandText(p[1], p[2])[1] + (p[4] ? '!' : '')).join('|');
+    if (key === this._demandKey) return;
+    this._demandKey = key;
+    el.innerHTML = parts.map(([l, v, m]) => {
+      const [, arrow] = this.demandText(v, m);
+      return `<span class="d-${l} ${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${l}${arrow}</span>`;
+    }).join(' ');
+    const tip = 'Nachfrage:\n' + parts.map(([, v, m, n, cap]) => `${n}: ${this.demandText(v, m)[0]}${cap ? ' (' + cap + ')' : ''}`).join('\n');
+    el.title = tip + '\n(Klicken für Details)';
+    const rc = document.getElementById('rci');
+    if (rc) rc.title = tip;
   },
 
   updateStatus() {
@@ -369,6 +607,7 @@ const UI = {
     document.getElementById('st-pop').textContent = 'Einw.: ' + fmtNum(c.population());
     document.getElementById('st-speed').textContent = this.modal > 0 ? 'Angehalten' : SPEED_NAMES[c.speed];
     document.getElementById('menutitle').textContent = c.name + ' – ' + CLASS_NAMES[c.cityClass];
+    this.updateDemand();
   },
 
   drawRCI() {
@@ -410,28 +649,31 @@ const UI = {
     bd.appendChild(body);
     w.appendChild(tb); w.appendChild(bd);
     document.getElementById('windows').appendChild(w);
-    // Position
+    // Position (auf kleinen Bildschirmen begrenzen CSS max-width/max-height die Größe)
     const app = document.getElementById('app').getBoundingClientRect();
     const r = w.getBoundingClientRect();
     let x = opts.x !== undefined ? opts.x : (app.width - r.width) / 2;
     let y = opts.y !== undefined ? opts.y : (app.height - r.height) / 2;
     if (opts.right) x = app.width - r.width - 8;
-    x = clamp(x, 0, Math.max(0, app.width - r.width));
-    y = clamp(y, 26, Math.max(26, app.height - r.height));
+    if (app.width < 640 && opts.x !== undefined && !opts.right) x = (app.width - r.width) / 2;
     w.style.left = x + 'px'; w.style.top = y + 'px';
-    // Ziehen
+    this.fitWindow(w);
+    // Ziehen (Maus und Touch)
     let d = null;
     tb.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('wclose')) return;
       d = { x: e.clientX, y: e.clientY, l: w.offsetLeft, t: w.offsetTop };
-      tb.setPointerCapture(e.pointerId);
+      try { tb.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
     });
     tb.addEventListener('pointermove', e => {
       if (!d) return;
-      w.style.left = clamp(d.l + e.clientX - d.x, -r.width + 60, app.width - 40) + 'px';
-      w.style.top = clamp(d.t + e.clientY - d.y, 24, app.height - 30) + 'px';
+      const a = document.getElementById('app').getBoundingClientRect();
+      w.style.left = clamp(d.l + e.clientX - d.x, -w.offsetWidth + 60, a.width - 40) + 'px';
+      w.style.top = clamp(d.t + e.clientY - d.y, 24, a.height - 30) + 'px';
     });
-    tb.addEventListener('pointerup', () => { d = null; });
+    const stop = () => { d = null; };
+    tb.addEventListener('pointerup', stop);
+    tb.addEventListener('pointercancel', stop);
     w.addEventListener('pointerdown', () => this.focusWin(w));
     w.dataset.id = id;
     w.onClose = opts.onClose;
@@ -441,6 +683,15 @@ const UI = {
     this.updateStatus();
     return w;
   },
+
+  /** Fenster vollständig in den sichtbaren Bereich schieben. */
+  fitWindow(w) {
+    const app = document.getElementById('app').getBoundingClientRect();
+    const x = clamp(w.offsetLeft, 0, Math.max(0, app.width - w.offsetWidth));
+    const y = clamp(w.offsetTop, 24, Math.max(24, app.height - w.offsetHeight));
+    w.style.left = x + 'px'; w.style.top = y + 'px';
+  },
+  fitWindows() { document.querySelectorAll('#windows .win').forEach(w => this.fitWindow(w)); },
 
   focusWin(w) {
     document.querySelectorAll('.win').forEach(x => x.classList.add('inactive'));
@@ -487,17 +738,83 @@ const UI = {
     return this.win(id, title, body, Object.assign({ modal: true }, opts || {}));
   },
 
+  /** Ersatz für alert() (in Sandbox-iframes blockiert). */
+  alert(title, html, fn) {
+    this.closeWin('alert');
+    return this.dialog('alert', title, `<div style="max-width:min(340px, calc(100vw - 40px))">${html}</div>`, [['OK', fn, true]]);
+  },
+
+  /** Ersatz für confirm(). */
+  confirm(title, html, yesLabel, fn) {
+    this.closeWin('confirm');
+    return this.dialog('confirm', title, `<div style="max-width:min(340px, calc(100vw - 40px))">${html}</div>`,
+      [[yesLabel || 'OK', fn, true], ['Abbrechen', null]]);
+  },
+
+  /** Ersatz für prompt(): fn(text) wird nur bei OK mit nicht-leerem Text aufgerufen. */
+  ask(title, label, value, fn, maxLen) {
+    const id = 'ask';
+    this.closeWin(id);
+    const body = document.createElement('div');
+    body.innerHTML = `<div class="col" style="width:min(280px, calc(100vw - 40px))"><label for="ask-in">${label}</label>
+      <input id="ask-in" class="field" maxlength="${maxLen || 40}"></div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn def" data-b="ok">OK</button><button class="btn" data-b="no">Abbrechen</button></div>`;
+    const inp = body.querySelector('input');
+    inp.value = value || '';
+    const ok = () => { const v = inp.value.trim(); if (!v) { inp.focus(); return; } this.closeWin(id); fn(v); };
+    body.querySelector('[data-b=ok]').addEventListener('click', ok);
+    body.querySelector('[data-b=no]').addEventListener('click', () => this.closeWin(id));
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok(); } });
+    this.win(id, title, body, { modal: true });
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  },
+
+  // =================== Meldungsverlauf ===================
+  logMessage(d) {
+    this.msgLog.unshift({ text: d.text, x: d.x, y: d.y, important: !!d.important, date: this.city.dateString() });
+    if (this.msgLog.length > 100) this.msgLog.length = 100;
+    if (this.wins.log) this.fillLog();
+  },
+
+  openLog() {
+    const body = document.createElement('div');
+    body.style.width = 'min(360px, calc(100vw - 24px))';
+    body.innerHTML = '<div class="loglist sunken" id="log-list"></div><div class="row" style="justify-content:space-between"><span class="note">Klick auf eine Meldung springt zum Ort.</span><button class="btn small" id="log-clear">Leeren</button></div>';
+    body.querySelector('#log-clear').addEventListener('click', () => { this.msgLog = []; this.fillLog(); });
+    this.win('log', 'Meldungen', body, { right: true, y: 30 });
+    this.fillLog();
+  },
+
+  fillLog() {
+    const list = document.getElementById('log-list');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!this.msgLog.length) { list.innerHTML = '<i>Noch keine Meldungen.</i>'; return; }
+    for (const m of this.msgLog) {
+      const row = document.createElement('div');
+      row.className = 'logrow' + (m.important ? ' imp' : '') + (m.x !== undefined ? ' go' : '');
+      row.innerHTML = `<span class="ld">${m.date}</span><span class="lt"></span>${m.x !== undefined ? '<span class="lg" title="Gehe zu">➜</span>' : ''}`;
+      row.querySelector('.lt').textContent = m.text;
+      if (m.x !== undefined) {
+        row.title = 'Klicken, um zum Ort zu springen';
+        row.addEventListener('click', () => this.view.centerOn(m.x, m.y));
+      }
+      list.appendChild(row);
+    }
+  },
+
   // =================== Übersichtskarte ===================
   openMap() {
     const body = document.createElement('div');
-    body.className = 'row';
+    body.className = 'row wrap';
     body.style.alignItems = 'flex-start';
     const cv = mkCanvas(W * 2, H * 2);
-    cv.className = 'sunken';
+    cv.className = 'sunken minimap';
+    cv.title = 'Klicken oder ziehen, um den Ausschnitt zu verschieben';
     cv.style.padding = '0'; cv.style.cursor = 'pointer';
     cv.style.width = (W * 2) + 'px'; cv.style.height = (H * 2) + 'px';
     const side = document.createElement('div');
-    side.className = 'col';
+    side.className = 'col mapside';
     for (const [m, label] of MAP_MODES) {
       const b = document.createElement('button');
       b.className = 'btn small mapbtn' + (m === this.mapMode ? ' on' : '');
@@ -528,9 +845,15 @@ const UI = {
       this.view.camY = (e.clientY - r.top) / r.height * H;
       this.view.clampCam();
     };
-    cv.addEventListener('pointerdown', e => { dragging = true; cv.setPointerCapture(e.pointerId); go(e); });
+    cv.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      dragging = true;
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* egal */ }
+      go(e);
+    });
     cv.addEventListener('pointermove', e => { if (dragging) go(e); });
     cv.addEventListener('pointerup', () => { dragging = false; });
+    cv.addEventListener('pointercancel', () => { dragging = false; });
     this.mapCanvas = cv;
     this.mapImg = mkCanvas(W * 2, H * 2);
     this.win('map', 'Übersichtskarte', body, { x: 112, y: 30, onClose: () => { this.mapCanvas = null; this.view.overlay = null; } });
@@ -573,7 +896,8 @@ const UI = {
   openGraphs() {
     const body = document.createElement('div');
     const cv = mkCanvas(380, 200);
-    cv.className = 'sunken'; cv.style.padding = '0'; cv.style.background = '#000';
+    cv.className = 'sunken scalable'; cv.style.padding = '0'; cv.style.background = '#000';
+    body.style.maxWidth = '388px';
     const bar = document.createElement('div');
     bar.className = 'btnbar';
     const series = [['res', 'Wohnen', '#30d030'], ['com', 'Gewerbe', '#4080ff'], ['ind', 'Industrie', '#f0d020'],
@@ -638,7 +962,7 @@ const UI = {
     if (this.wins.budget) { this.focusWin(this.wins.budget); return; }
     if (!yearEnd) c.computeBudgetRequests();
     const body = document.createElement('div');
-    body.style.width = '400px';
+    body.style.width = 'min(400px, calc(100vw - 24px))';
     body.innerHTML = `
       ${yearEnd ? '<div class="news"><b>Haushaltsabschluss ' + (c.year - 1) + '</b><br>Lege Steuersatz und Mittel für das kommende Jahr fest.</div>' : ''}
       <h3>Steuern</h3>
@@ -706,7 +1030,7 @@ const UI = {
   openEvaluation() {
     const body = document.createElement('div');
     body.id = 'eval-body';
-    body.style.width = '420px';
+    body.style.width = 'min(420px, calc(100vw - 24px))';
     this.win('eval', 'Bewertung', body, { y: 40 });
     this.fillEvaluation();
   },
@@ -720,15 +1044,15 @@ const UI = {
       ? c.problemOrder.map(i => `<div class="row"><span style="flex:1">${PROBLEM_NAMES[i]}</span><b style="white-space:nowrap">${Math.round(c.problemVotes[i] * 100 / total)} %</b></div>`).join('')
       : '<i>Keine Angaben</i>';
     body.innerHTML = `
-      <div class="row" style="align-items:flex-start;gap:14px">
-        <div class="sunken" style="flex:1">
+      <div class="row wrap" style="align-items:stretch;gap:8px 14px">
+        <div class="sunken" style="flex:1 1 170px">
           <h3 style="margin-top:0">Öffentliche Meinung</h3>
           Macht der Bürgermeister einen guten Job?
           <div class="row"><span style="width:50px">Ja</span><b>${c.cityYes} %</b></div>
           <div class="row"><span style="width:50px">Nein</span><b>${100 - c.cityYes} %</b></div>
           <h3>Die größten Probleme</h3>${probs}
         </div>
-        <div class="sunken" style="flex:1.2">
+        <div class="sunken" style="flex:1.2 1 190px">
           <h3 style="margin-top:0">Statistik</h3>
           <div class="grid2">
             <span>Einwohner:</span><span class="r">${fmtNum(c.cityPop)}</span>
@@ -787,7 +1111,7 @@ const UI = {
     const t = c.trafficDensity[h];
     this.closeWin('query');
     this.dialog('query', 'Abfrage', `
-      <div style="width:250px">
+      <div style="width:min(250px, calc(100vw - 40px))">
         <div class="center" style="font-weight:bold;font-size:14px;margin-bottom:6px">${name}</div>
         <div class="grid2 sunken">
           <span>Dichte:</span><span class="r">${dens}</span>
@@ -808,6 +1132,7 @@ const UI = {
     switch (type) {
       case 'message': {
         this.lastMsg = d;
+        this.logMessage(d);
         this.status(d.text, d.important);
         if (d.important) {
           if (/Monster/.test(d.text)) Sound.monster();
@@ -820,6 +1145,7 @@ const UI = {
       }
       case 'milestone':
         Sound.fanfare();
+        this.logMessage({ text: d.text, important: true });
         this.status(d.text);
         this.dialog('milestone', 'Herzlichen Glückwunsch!', `<div class="news"><div class="head">Stadtnachrichten</div>${d.text}</div>`, [['OK', null, true]]);
         break;
@@ -916,14 +1242,14 @@ const UI = {
   newCityDialog() {
     const body = document.createElement('div');
     body.innerHTML = `
-      <div class="row" style="align-items:flex-start;gap:12px">
+      <div class="row wrap" style="align-items:flex-start;gap:12px">
         <div class="col">
           <canvas id="nc-map" width="${W * 2}" height="${H * 2}" class="sunken" style="padding:0"></canvas>
           <button class="btn" id="nc-gen">Neue Landschaft erzeugen</button>
         </div>
         <div class="col" style="width:200px">
           <h3 style="margin-top:0">Stadtname</h3>
-          <input id="nc-name" value="Neustadt" maxlength="24" style="font:inherit;padding:2px">
+          <input id="nc-name" class="field" value="Neustadt" maxlength="24">
           <h3>Schwierigkeit</h3>
           ${LEVEL_NAMES.map((n, i) => `<label><input type="radio" name="nc-lvl" value="${i}" ${i === 0 ? 'checked' : ''}> ${n} (${fmtMoney(LEVEL_FUNDS[i])})</label>`).join('')}
           <h3>Landschaft</h3>
@@ -969,7 +1295,7 @@ const UI = {
 
   scenarioDialog(fromStart) {
     const body = document.createElement('div');
-    body.style.width = '460px';
+    body.style.width = 'min(460px, calc(100vw - 24px))';
     body.innerHTML = `<p>Wähle ein Szenario. Jede Stadt steckt in einer Krise – löse sie innerhalb der Frist!</p>
       <div class="scen-list">${SCENARIOS.map((s, i) => `<button class="btn" data-i="${i}"><b>${s.name}</b><br><span class="note">${s.year} · ${s.years} Jahre</span></button>`).join('')}</div>
       <div class="sunken" id="sc-text" style="margin-top:8px;min-height:70px">Wähle ein Szenario aus der Liste.</div>
@@ -1005,6 +1331,9 @@ const UI = {
     else this.view.centerOn(W / 2, H / 2);
     Sound.enabled = c.soundOn;
     this.mapVersionDrawn = -1;
+    this.msgLog = [];
+    this.fillLog();
+    this.lastMsg = null;
     this.updateStatus();
     this.fillEvaluation();
     this.drawGraphs();
@@ -1012,110 +1341,208 @@ const UI = {
   },
 
   // =================== Speichern / Laden ===================
+  /* Spielstände liegen im localStorage. Ist er nicht verfügbar (z. B. in einem Sandbox-iframe),
+   * bleibt der Export als Datei bzw. als Text zum Kopieren. */
   savesIndex() {
-    try { return JSON.parse(localStorage.getItem('simcity89-index') || '[]'); } catch (e) { return []; }
+    try { return JSON.parse(this.lsGet('simcity89-index') || '[]') || []; } catch (e) { return []; }
+  },
+
+  noStorageHint() {
+    return '<p>Speichern im Browser ist hier leider nicht möglich (der Browser bzw. die einbettende Seite erlaubt keinen lokalen Speicher).</p><p>Du kannst die Stadt stattdessen <b>als Datei exportieren</b> und später wieder importieren.</p>';
   },
 
   saveCity(ask) {
     const c = this.city;
-    let name = c.saveName || c.name;
-    if (ask || !c.saveName) {
-      const n = prompt('Name des Spielstands:', name);
-      if (!n) return;
-      name = n.trim();
+    if (!this.storageOK()) {
+      this.dialog('nosave', 'Speichern nicht möglich', `<div style="max-width:min(340px, calc(100vw - 40px))">${this.noStorageHint()}</div>`,
+        [['Exportieren…', () => this.exportFile(), true], ['Abbrechen', null]]);
+      return;
     }
-    c.saveName = name;
+    const name = c.saveName || c.name;
+    if (ask || !c.saveName) this.ask('Speichern unter', 'Name des Spielstands:', name, n => this.saveAs(n), 40);
+    else this.saveAs(name);
+  },
+
+  saveAs(name) {
+    const c = this.city;
     try {
       const data = JSON.stringify(c.serialize());
-      localStorage.setItem('simcity89-save-' + name, data);
+      this.lsSet('simcity89-save-' + name, data);
       const idxs = this.savesIndex().filter(s => s.name !== name);
       idxs.unshift({ name, city: c.name, date: c.dateString(), pop: c.population(), saved: new Date().toLocaleString('de-DE') });
-      localStorage.setItem('simcity89-index', JSON.stringify(idxs));
+      this.lsSet('simcity89-index', JSON.stringify(idxs));
+      c.saveName = name;
       this.status(`Spielstand „${name}“ gespeichert.`);
     } catch (e) {
-      alert('Speichern fehlgeschlagen: ' + e.message + '\nTipp: Nutze „Als Datei exportieren“.');
+      this.dialog('nosave', 'Speichern fehlgeschlagen', `<div style="max-width:min(340px, calc(100vw - 40px))"><p>${esc(e.message || String(e))}</p><p>Tipp: Exportiere die Stadt als Datei.</p></div>`,
+        [['Exportieren…', () => this.exportFile(), true], ['Abbrechen', null]]);
     }
   },
 
   loadDialog(fromStart) {
-    const saves = this.savesIndex();
+    const ok = this.storageOK();
+    const saves = ok ? this.savesIndex() : [];
     const body = document.createElement('div');
-    body.innerHTML = `<div class="saves sunken">${saves.length ? saves.map((s, i) => `
-      <div class="row"><span><b>${s.name}</b><br><span class="note">${s.city} · ${s.date} · ${fmtNum(s.pop)} Einw. · gespeichert ${s.saved}</span></span>
-      <span><button class="btn small" data-load="${i}">Laden</button><button class="btn small" data-del="${i}">Löschen</button></span></div>`).join('') : '<i>Keine gespeicherten Städte im Browser.</i>'}</div>
-      <div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn" id="ld-file">Aus Datei…</button><button class="btn" id="ld-back">Abbrechen</button></div>`;
+    body.style.width = 'min(420px, calc(100vw - 24px))';
+    body.innerHTML = `<div class="saves sunken">${!ok ? this.noStorageHint() : saves.length ? saves.map((s, i) => `
+      <div class="row"><span><b>${esc(s.name)}</b><br><span class="note">${esc(s.city)} · ${esc(s.date)} · ${fmtNum(s.pop)} Einw. · gespeichert ${esc(s.saved)}</span></span>
+      <span style="white-space:nowrap"><button class="btn small" data-load="${i}">Laden</button><button class="btn small" data-del="${i}">Löschen</button></span></div>`).join('') : '<i>Keine gespeicherten Städte im Browser.</i>'}</div>
+      <div class="row wrap" style="justify-content:flex-end;margin-top:6px"><button class="btn" id="ld-file">Aus Datei…</button><button class="btn" id="ld-text">Aus Text…</button><button class="btn" id="ld-back">Abbrechen</button></div>`;
+    const back = () => { this.closeWin('load'); if (fromStart && !this.hasRunningCity) this.startScreen(); };
     body.querySelectorAll('[data-load]').forEach(b => b.addEventListener('click', () => {
       const s = saves[+b.dataset.load];
       try {
-        const o = JSON.parse(localStorage.getItem('simcity89-save-' + s.name));
-        this.loadObject(o);
+        const raw = this.lsGet('simcity89-save-' + s.name);
+        if (!raw) throw new Error('Spielstand nicht gefunden.');
+        this.loadObject(JSON.parse(raw));
         this.city.saveName = s.name;
         this.closeWin('load');
-      } catch (e) { alert('Laden fehlgeschlagen: ' + e.message); }
+      } catch (e) { this.alert('Laden fehlgeschlagen', esc(e.message || String(e))); }
     }));
     body.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => {
       const s = saves[+b.dataset.del];
-      if (!confirm(`Spielstand „${s.name}“ löschen?`)) return;
-      localStorage.removeItem('simcity89-save-' + s.name);
-      localStorage.setItem('simcity89-index', JSON.stringify(saves.filter(x => x !== s)));
-      this.closeWin('load'); this.loadDialog(fromStart);
+      this.confirm('Löschen', `Spielstand „${esc(s.name)}“ wirklich löschen?`, 'Löschen', () => {
+        this.lsDel('simcity89-save-' + s.name);
+        try { this.lsSet('simcity89-index', JSON.stringify(saves.filter(x => x !== s))); } catch (e) { /* egal */ }
+        this.closeWin('load'); this.loadDialog(fromStart);
+      });
     }));
     body.querySelector('#ld-file').addEventListener('click', () => document.getElementById('fileinput').click());
-    body.querySelector('#ld-back').addEventListener('click', () => { this.closeWin('load'); if (fromStart && !this.hasRunningCity) this.startScreen(); });
-    this.win('load', 'Stadt laden', body, { modal: true });
+    body.querySelector('#ld-text').addEventListener('click', () => { this.closeWin('load'); this.importTextDialog(fromStart); });
+    body.querySelector('#ld-back').addEventListener('click', back);
+    this.win('load', 'Stadt laden', body, { modal: true, onClose: null });
   },
 
   loadObject(o) {
     const c = this.city;
+    const listeners = c.listeners;
     c.deserialize(o);
+    if (!c.listeners || !c.listeners.length) c.listeners = listeners;
     c.fullAnalysis();
     this.afterLoad();
     this.status(`${c.name} geladen.`);
   },
 
+  /** Nach dem Laden aus Datei/Text: Startbildschirm und Dialoge schließen. */
+  closeAllForGame() {
+    const bg = document.getElementById('start-bg');
+    if (bg) bg.remove();
+    for (const id in this.wins) this.closeWin(id);
+    this.modal = 0;
+    this.updateStatus();
+  },
+
   exportFile() {
     const c = this.city;
-    const blob = new Blob([JSON.stringify(c.serialize())], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (c.name || 'stadt').replace(/[^\wäöüÄÖÜß-]+/g, '_') + '.city.json';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    const json = JSON.stringify(c.serialize());
+    const fname = (c.name || 'stadt').replace(/[^\wäöüÄÖÜß-]+/g, '_') + '.city.json';
+    const download = () => {
+      try {
+        const blob = new Blob([json], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = fname;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        this.status(`Download „${fname}“ angefordert – falls nichts passiert, bitte den Text kopieren.`);
+      } catch (e) { this.status('Download nicht möglich – bitte den Text kopieren.', true); }
+    };
+    // In iframes ist der Download oft gesperrt: dann den Text zum Kopieren anbieten.
+    const body = document.createElement('div');
+    body.style.width = 'min(400px, calc(100vw - 24px))';
+    body.innerHTML = `<p>Speichere die Stadt als Datei <b>${esc(fname)}</b>. Falls der Download hier nicht funktioniert,
+      kopiere den Text unten und füge ihn später unter <i>Stadt laden → Aus Text…</i> wieder ein.</p>
+      <textarea class="field codebox" readonly></textarea>
+      <div class="row wrap" style="justify-content:flex-end;margin-top:6px">
+        <button class="btn def" data-b="dl">Datei herunterladen</button><button class="btn" data-b="copy">Text kopieren</button><button class="btn" data-b="close">Schließen</button></div>`;
+    const ta = body.querySelector('textarea');
+    ta.value = json;
+    body.querySelector('[data-b=dl]').addEventListener('click', download);
+    body.querySelector('[data-b=copy]').addEventListener('click', () => {
+      ta.focus(); ta.select();
+      let done = false;
+      try { done = document.execCommand('copy'); } catch (e) { done = false; }
+      if (!done && navigator.clipboard) {
+        navigator.clipboard.writeText(json).then(() => this.status('Spielstand in die Zwischenablage kopiert.'),
+          () => this.status('Kopieren nicht erlaubt – bitte Text markieren und manuell kopieren.', true));
+      } else this.status(done ? 'Spielstand in die Zwischenablage kopiert.' : 'Bitte Text markieren und manuell kopieren.', !done);
+    });
+    body.querySelector('[data-b=close]').addEventListener('click', () => this.closeWin('export'));
+    this.closeWin('export');
+    this.win('export', 'Als Datei exportieren', body, { modal: true });
+  },
+
+  importTextDialog(fromStart) {
+    const body = document.createElement('div');
+    body.style.width = 'min(400px, calc(100vw - 24px))';
+    body.innerHTML = `<p>Füge hier den exportierten Spielstand (Text) ein:</p><textarea class="field codebox"></textarea>
+      <div class="row" style="justify-content:flex-end;margin-top:6px"><button class="btn def" data-b="ok">Laden</button><button class="btn" data-b="no">Abbrechen</button></div>`;
+    const ta = body.querySelector('textarea');
+    body.querySelector('[data-b=ok]').addEventListener('click', () => {
+      try {
+        const o = JSON.parse(ta.value.trim());
+        this.loadObject(o);
+        this.closeAllForGame();
+      } catch (e) { this.status('Text ist kein gültiger Spielstand: ' + (e.message || e), true); Sound.error(); }
+    });
+    body.querySelector('[data-b=no]').addEventListener('click', () => { this.closeWin('importtext'); if (fromStart && !this.hasRunningCity) this.startScreen(); });
+    this.win('importtext', 'Stadt aus Text laden', body, { modal: true });
+    setTimeout(() => ta.focus(), 0);
   },
 
   importFile(e) {
-    const f = e.target.files[0];
+    const f = e.target.files && e.target.files[0];
     if (!f) return;
     const r = new FileReader();
     r.onload = () => {
       try {
         this.loadObject(JSON.parse(r.result));
-        document.getElementById('start-bg') && document.getElementById('start-bg').remove();
-        this.modal = 0;
-        for (const id in this.wins) this.closeWin(id);
-      } catch (err) { alert('Datei konnte nicht geladen werden: ' + err.message); }
+        this.closeAllForGame();
+      } catch (err) { this.alert('Import fehlgeschlagen', 'Datei konnte nicht geladen werden: ' + esc(err.message || String(err))); }
     };
+    r.onerror = () => this.alert('Import fehlgeschlagen', 'Datei konnte nicht gelesen werden.');
     r.readAsText(f);
     e.target.value = '';
   },
 
   renameCity() {
-    const n = prompt('Neuer Name der Stadt:', this.city.name);
-    if (n && n.trim()) { this.city.name = n.trim(); this.updateStatus(); }
+    this.ask('Stadt umbenennen', 'Neuer Name der Stadt:', this.city.name, n => { this.city.name = n; this.updateStatus(); }, 24);
   },
 
   about() {
-    this.dialog('about', 'Über SimCity', `<div style="max-width:380px">
+    this.dialog('about', 'Über SimCity', `<div style="max-width:min(400px, calc(100vw - 40px))">
       <div class="logo" style="font-size:32px">SimCity</div>
       <p>Ein originalgetreuer Nachbau des Stadtsimulators von 1989 – mit den Simulationsregeln des Originals
       (Zonenwachstum, Verkehr, Strom, Umwelt, Kriminalität, Bodenwert, Haushalt, Bewertung), allen Werkzeugen,
       Katastrophen und den acht klassischen Szenarien.</p>
-      <p class="note">Steuerung: Linksklick baut, Ziehen baut Linien, Rechtsklick/Mittelklick + Ziehen verschiebt die Karte,
-      Mausrad zoomt. Tasten: Pfeile verschieben, +/− zoomen, Leertaste Pause, Esc schließt Fenster,
-      M Karte, G Grafiken, B Haushalt, E Bewertung, Werkzeuge über die im Tooltip genannten Tasten.</p>
+      <h3>Maus</h3>
+      <p class="note">Linksklick baut, Ziehen baut Linien (Straße, Schiene, Leitung, Park, Bulldozer).
+      Rechts-/Mittelklick + Ziehen verschiebt die Karte, Mausrad zoomt, Klick in die Übersichtskarte springt dorthin.</p>
+      <h3>Touch</h3>
+      <p class="note">Tippen baut bzw. fragt ab, mit einem Finger ziehen baut Linien.
+      Zwei Finger verschieben die Karte, Auseinander-/Zusammenziehen zoomt.</p>
+      <h3>Tastatur</h3>
+      <div class="grid2 note keys">
+        <span>Pfeiltasten</span><span>Karte verschieben</span>
+        <span>+ / −</span><span>Vergrößern / Verkleinern</span>
+        <span>Leertaste</span><span>Pause an/aus</span>
+        <span>Esc</span><span>Oberstes Fenster schließen</span>
+        <span>M / G / E / N</span><span>Karte / Grafiken / Bewertung / Meldungen</span>
+        <span>Umschalt+B</span><span>Haushalt</span>
+        <span>Strg+S</span><span>Speichern</span>
+        <span>F1</span><span>Diese Hilfe</span>
+        <span>B Q R T L P H</span><span>Bulldozer, Abfrage, Straße, Schiene, Leitung, Park, Verschieben</span>
+        <span>1 – 0</span><span>Wohnen, Gewerbe, Industrie, Polizei, Feuerwehr, Stadion, Hafen, Kohle-, Atomkraftwerk, Flughafen</span>
+      </div>
       <p class="note">Alle Grafiken und Klänge werden im Programm erzeugt – es werden keine Original-Dateien verwendet.</p></div>`,
-    [['OK', null, true]]);
+    [['OK', null, true]], { modal: false });
   },
 };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+}
 
 function c2date(c) { return c.dateString(); }

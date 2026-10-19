@@ -16,7 +16,15 @@
   const CYCLE_MS = [0, 1200, 400, 100];
   let last = performance.now(), acc = 0, spriteAcc = 0, uiAcc = 0;
 
+  let errCount = 0;
   function loop(now) {
+    requestAnimationFrame(loop);   // zuerst: ein Fehler in einem Bild darf die Schleife nicht beenden
+    try { step(now); } catch (e) {
+      if (errCount++ < 5) console.error(e);
+      if (errCount === 1) UI.status('Interner Fehler: ' + (e && e.message), true);
+    }
+  }
+  function step(now) {
     let dt = now - last;
     last = now;
     if (dt > 250) dt = 250;
@@ -34,7 +42,6 @@
     uiAcc += dt;
     if (uiAcc > 200) { uiAcc = 0; UI.updateStatus(); UI.drawRCI(); }
     if (UI.mapCanvas) UI.drawMapWin(false);
-    requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 })();

@@ -6,12 +6,25 @@ const Sound = {
   enabled: true,
 
   init() {
-    if (this.ctx) return;
-    try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { this.ctx = null; }
+    // Muss aus einer Nutzeraktion heraus aufgerufen werden (Autoplay-Regeln, v. a. iOS)
+    try {
+      if (!this.ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return;
+        this.ctx = new AC();
+      }
+      if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume().catch(() => {});
+    } catch (e) { this.ctx = null; }
   },
 
+  /** Sicher abspielen: Fehler der Audio-API dürfen das Spiel nie stören. */
+  ok() { return this.enabled && this.ctx && this.ctx.state !== 'closed'; },
+
   tone(freq, dur, type, vol, slide) {
-    if (!this.enabled || !this.ctx) return;
+    if (!this.ok()) return;
+    try { this._tone(freq, dur, type, vol, slide); } catch (e) { /* stumm */ }
+  },
+  _tone(freq, dur, type, vol, slide) {
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type || 'square';
@@ -24,7 +37,10 @@ const Sound = {
   },
 
   noise(dur, vol, lowpass) {
-    if (!this.enabled || !this.ctx) return;
+    if (!this.ok()) return;
+    try { this._noise(dur, vol, lowpass); } catch (e) { /* stumm */ }
+  },
+  _noise(dur, vol, lowpass) {
     const t = this.ctx.currentTime;
     const len = Math.floor(this.ctx.sampleRate * dur);
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
