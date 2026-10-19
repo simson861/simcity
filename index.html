@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>SimCity 1989 – Nachbau</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="menubar"></div>
+  <div id="main">
+    <div id="toolbar">
+      <div id="tools"></div>
+      <div id="toolinfo"><div id="toolname">&nbsp;</div><div id="toolcost">&nbsp;</div></div>
+      <div id="rci-box"><canvas id="rci" width="72" height="92"></canvas></div>
+    </div>
+    <div id="mapwrap"><canvas id="map"></canvas></div>
+  </div>
+  <div id="statusbar">
+    <span id="st-name" class="st"></span>
+    <span id="st-date" class="st"></span>
+    <span id="st-funds" class="st"></span>
+    <span id="st-pop" class="st"></span>
+    <span id="st-speed" class="st"></span>
+    <span id="st-msg" class="st msg" title="Klicken, um zum Ort der Meldung zu springen"></span>
+  </div>
+  <div id="windows"></div>
+</div>
+<input type="file" id="fileinput" accept=".json,.city,application/json" style="display:none">
+<script src="js/core.js"></script>
+<script src="js/mapgen.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/scenarios.js"></script>
+<script src="js/gfx.js"></script>
+<script src="js/view.js"></script>
+<script src="js/sound.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

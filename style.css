@@ -1,0 +1,125 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%; overflow: hidden;
+  background: #000; color: #000;
+  font: 12px/1.3 Tahoma, "MS Sans Serif", Verdana, Arial, sans-serif;
+  -webkit-user-select: none; user-select: none;
+}
+#app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+/* ---------- Menüleiste ---------- */
+#menubar {
+  background: #c0c0c0; border-bottom: 2px solid #808080; display: flex; height: 24px; flex: none;
+  box-shadow: inset 0 1px #fff; position: relative; z-index: 1000;
+}
+.menu { position: relative; }
+.menu > .mtitle { padding: 4px 10px; cursor: default; }
+.menu.open > .mtitle { background: #000080; color: #fff; }
+.mlist {
+  display: none; position: absolute; left: 0; top: 24px; min-width: 210px;
+  background: #c0c0c0; border: 2px outset #fff; padding: 2px 0; box-shadow: 2px 2px 0 #000;
+}
+.menu.open .mlist { display: block; }
+.mitem { padding: 3px 22px 3px 22px; white-space: nowrap; position: relative; cursor: default; }
+.mitem:hover { background: #000080; color: #fff; }
+.mitem.checked::before { content: '✓'; position: absolute; left: 7px; }
+.mitem.disabled { color: #808080; }
+.mitem .key { float: right; margin-left: 20px; color: #444; }
+.mitem:hover .key { color: #ccc; }
+.msep { border-top: 1px solid #808080; border-bottom: 1px solid #fff; margin: 3px 2px; }
+#menutitle { margin-left: auto; padding: 4px 10px; font-weight: bold; color: #000080; }
+
+/* ---------- Hauptbereich ---------- */
+#main { flex: 1; display: flex; min-height: 0; }
+#toolbar {
+  width: 104px; flex: none; background: #c0c0c0; border-right: 2px solid #808080;
+  display: flex; flex-direction: column; align-items: center; padding: 4px 2px; overflow-y: auto;
+}
+#tools { display: grid; grid-template-columns: 48px 48px; gap: 2px; }
+.tool {
+  width: 48px; height: 44px; border: 2px outset #fff; background: #c0c0c0; padding: 0;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative;
+}
+.tool canvas { image-rendering: pixelated; width: 40px; height: 36px; }
+.tool.active { border: 2px inset #fff; background: #a8a8a8; }
+.tool.wide { grid-column: span 2; width: 98px; }
+#toolinfo { margin-top: 6px; text-align: center; width: 100%; min-height: 34px; }
+#toolname { font-weight: bold; }
+#toolcost { color: #000080; }
+#rci-box { margin-top: 6px; border: 2px inset #fff; background: #000; }
+#rci { display: block; image-rendering: pixelated; }
+
+#mapwrap { flex: 1; position: relative; min-width: 0; background: #000; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; image-rendering: pixelated; cursor: crosshair; touch-action: none; }
+
+/* ---------- Statusleiste ---------- */
+#statusbar {
+  flex: none; display: flex; background: #c0c0c0; border-top: 2px solid #fff; height: 26px; align-items: center;
+  padding: 0 2px; gap: 3px;
+}
+.st { border: 1px inset #fff; padding: 2px 8px; white-space: nowrap; background: #c0c0c0; }
+#st-name { font-weight: bold; }
+#st-funds { color: #006000; font-weight: bold; min-width: 90px; text-align: right; }
+#st-funds.neg { color: #c00000; }
+.msg { flex: 1; overflow: hidden; text-overflow: ellipsis; cursor: pointer; background: #fffff0; }
+.msg.alert { background: #ffd0d0; color: #a00000; font-weight: bold; }
+
+/* ---------- Fenster ---------- */
+.win {
+  position: absolute; background: #c0c0c0; border: 2px outset #fff; box-shadow: 3px 3px 0 rgba(0,0,0,0.6);
+  display: flex; flex-direction: column; min-width: 160px; z-index: 100;
+}
+.win .wtitle {
+  background: linear-gradient(90deg, #000080, #1084d0); color: #fff; font-weight: bold; padding: 3px 4px 3px 6px;
+  display: flex; align-items: center; cursor: move; flex: none;
+}
+.win.inactive .wtitle { background: linear-gradient(90deg, #808080, #b0b0b0); }
+.win .wtitle span { flex: 1; }
+.win .wclose {
+  width: 16px; height: 14px; border: 2px outset #fff; background: #c0c0c0; color: #000; font: bold 10px/9px Arial;
+  text-align: center; cursor: pointer; padding: 0;
+}
+.win .wbody { padding: 6px; overflow: auto; }
+.win canvas { image-rendering: pixelated; }
+
+.btn {
+  border: 2px outset #fff; background: #c0c0c0; padding: 3px 10px; font: inherit; cursor: pointer; margin: 2px;
+}
+.btn:active, .btn.on { border-style: inset; background: #a8a8a8; }
+.btn.small { padding: 1px 5px; font-size: 11px; }
+.btn.def { font-weight: bold; outline: 1px solid #000; }
+.row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+.col { display: flex; flex-direction: column; gap: 3px; }
+.sunken { border: 2px inset #fff; background: #fff; padding: 4px; }
+.grid2 { display: grid; grid-template-columns: auto auto; gap: 2px 12px; }
+.grid2 .r { text-align: right; font-weight: bold; }
+.btnbar { display: flex; flex-wrap: wrap; gap: 0; }
+.mapbtn { width: 136px; text-align: left; }
+h3 { margin: 6px 0 4px; font-size: 12px; color: #000080; }
+.center { text-align: center; }
+input[type=range] { width: 160px; }
+.note { color: #404040; font-size: 11px; }
+.news { background: #fffff0; border: 2px inset #fff; padding: 10px; max-width: 360px; font-size: 13px; }
+.news .head { font: bold 16px Georgia, "Times New Roman", serif; border-bottom: 2px solid #000; margin-bottom: 6px; text-transform: uppercase; }
+
+/* ---------- Startbildschirm ---------- */
+#start-bg {
+  position: absolute; inset: 0; z-index: 2000;
+  background: radial-gradient(ellipse at center, #1c3f8c 0%, #061638 70%);
+  display: flex; align-items: center; justify-content: center;
+}
+.logo { font: bold 46px/1 "Arial Black", Impact, sans-serif; color: #ffd000; text-shadow: 3px 3px 0 #b00000, 6px 6px 0 #000; letter-spacing: 2px; text-align: center; }
+.logo small { display: block; font: bold 14px Tahoma, sans-serif; color: #fff; text-shadow: 1px 1px 0 #000; letter-spacing: 1px; margin-top: 6px; }
+.scen-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.scen-list .btn { text-align: left; }
+.saves { max-height: 220px; overflow-y: auto; min-width: 300px; }
+.saves .row { justify-content: space-between; border-bottom: 1px solid #a0a0a0; padding: 2px; }
+
+@media (max-width: 640px) {
+  #toolbar { width: 56px; }
+  #tools { grid-template-columns: 48px; }
+  .tool.wide { width: 48px; grid-column: auto; }
+  #rci-box { display: none; }
+  #st-name, #st-pop, #st-speed { display: none; }
+  .logo { font-size: 30px; }
+}
