@@ -693,7 +693,8 @@ const UI = {
   updateStatus() {
     const c = this.city;
     document.getElementById('st-name').textContent = c.name;
-    document.getElementById('st-date').textContent = c.dateString();
+    document.getElementById('st-date').textContent = (typeof Seasons !== 'undefined' && Seasons.enabled ? Seasons.icon(c.month) + ' ' : '') + c.dateString();
+    document.getElementById('st-date').title = typeof Seasons !== 'undefined' ? Seasons.name(c.month) : '';
     const f = document.getElementById('st-funds');
     f.textContent = fmtMoney(c.funds);
     f.classList.toggle('neg', c.funds < 0);

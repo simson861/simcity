@@ -1022,12 +1022,23 @@ Object.assign(City.prototype, {
   // ================= Meldungen =================
   sendMessages() {
     this.checkGrowth();
+    // Original: jeder Hinweis wird nur alle 64 Wochen geprüft. Mit dem Berater im Modus „häufig“
+    // (Erweiterung, wie in der SNES-Fassung) laufen alle Prüfungen in 16 Wochen einmal durch.
+    const frequent = typeof Advisor !== 'undefined' && Advisor.mode === 'oft';
+    if (!frequent) { this.checkMessage(this.cityTime & 63); return; }
+    for (let k = 0; k < 4; k++) this.checkMessage(((this.cityTime & 15) * 4 + k) & 63);
+  },
+
+  checkMessage(slot) {
     const s = this.stats;
     const totalZonePop = s.resZonePop + s.comZonePop + s.indZonePop;
-    switch (this.cityTime & 63) {
-      case 1: if (Math.floor(totalZonePop / 4) >= s.resZonePop) this.message('Mehr Wohngebiete benötigt.'); break;
-      case 5: if (Math.floor(totalZonePop / 8) >= s.comZonePop) this.message('Mehr Gewerbegebiete benötigt.'); break;
-      case 10: if (Math.floor(totalZonePop / 8) >= s.indZonePop) this.message('Mehr Industriegebiete benötigt.'); break;
+    const hasZones = totalZonePop > 0;
+    switch (slot) {
+      case 1: if (Math.floor(totalZonePop / 4) >= s.resZonePop || (hasZones && this.resValve > 1200)) this.message('Mehr Wohngebiete benötigt.'); break;
+      case 5: if (Math.floor(totalZonePop / 8) >= s.comZonePop || (hasZones && this.comValve > 900)) this.message('Mehr Gewerbegebiete benötigt.'); break;
+      case 10: if (Math.floor(totalZonePop / 8) >= s.indZonePop || (hasZones && this.indValve > 900)) this.message('Mehr Industriegebiete benötigt.'); break;
+      case 38: if (this.totalPop > 100 && this.cityScore > 700 && this.cityYes > 70) this.message('Die Bürger sind mit deiner Arbeit sehr zufrieden!'); break;
+      case 40: if (this.funds < 500 && this.totalPop > 0) this.message('Die Stadtkasse ist fast leer. Ein Kredit oder höhere Steuern könnten helfen.'); break;
       case 14: if (totalZonePop > 10 && totalZonePop * 2 > s.roadTotal) this.message('Mehr Straßen benötigt.'); break;
       case 18: if (totalZonePop > 50 && totalZonePop > s.railTotal) this.message('Unzureichendes Schienennetz.'); break;
       case 22: if (totalZonePop > 10 && s.coalPop + s.nuclearPop === 0) this.message('Baue ein Kraftwerk!'); break;

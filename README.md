@@ -21,8 +21,6 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 - **Karten** Stadtplan, Zonen, Stromnetz, Verkehrsnetz, Bevölkerungsdichte, Wachstum, Verkehrsdichte,
   Umweltverschmutzung, Kriminalität, Bodenwert, Feuerwehr- und Polizei-Abdeckung
 - **Grafiken** Wohnen, Gewerbe, Industrie, Geldfluss, Kriminalität, Umwelt (10 und 120 Jahre)
-- **Erweiterungen gegen Geldnot** (nicht im Original): Steuern fließen monatlich in die Kasse; Steuerertrag einstellbar
-  (wie 1989 ×1, erhöht ×3 = Standard, hoch ×5); Kredite über je $10.000 (max. 5, Zinsen 5–9 % je nach Schwierigkeit, jederzeit tilgbar)
 - **Mehr Geld** (Erweiterung, nicht im Original): Steuern fließen monatlich in die Kasse; Steuerertrag einstellbar
   (wie 1989 ×1, erhöht ×3 = Standard, hoch ×5); Kredite über je $10.000 (max. 5, Zinsen 5–9 % je nach Schwierigkeit, jederzeit tilgbar)
 - **Haushalt** jährlich im Januar: Steuersatz 0–20 %, Mittel für Verkehr, Feuerwehr, Polizei; Auto-Budget;
@@ -35,6 +33,10 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
   Boston 2010, Rio de Janeiro 2047 – mit Zielen und Fristen wie im Original
 - **Optionen** Auto-Abriss, Auto-Budget, Auto-Gehe-zu, Ton; Tempo Pause/Langsam/Mittel/Schnell
 - **Speichern/Laden** im Browser (localStorage) oder als Datei (Export/Import)
+- **Jahreszeiten & Wetter** (Erweiterung): Schnee im Winter, Blüten im Frühling, buntes Laub im Herbst; Schneefall, Regen und
+  fallende Blätter als Animation (Optionen → Jahreszeiten & Wetter)
+- **Berater** (wie in der SNES-Fassung): Hinweise wie „Mehr Industriegebiete benötigt.“ als Sprechblase mit Porträt,
+  wahlweise häufig, wie 1989 oder aus (Optionen)
 - Meldungen und Meilensteine (Kleinstadt, Stadt, Hauptstadt, Metropole, Megalopolis), Cheat „FUND“
 
 ## Online-Funktionen
@@ -80,6 +82,8 @@ Ohne Einrichtung läuft alles offline; Auto-Speichern funktioniert dann lokal im
 | `js/scenarios.js` | Die acht Szenarien |
 | `js/gfx.js` | Prozedurale Pixelgrafik für Felder und Gebäude |
 | `js/view.js` | Darstellung von Stadt und Übersichtskarte |
+| `js/seasons.js` | Jahreszeiten (Umfärbung) und Wetter-Animation |
+| `js/advisor.js` | Berater-Sprechblase |
 | `js/ui.js` | Menüs, Fenster, Dialoge |
 | `js/net.js` | Firebase-Anbindung, Google-Anmeldung |
 | `js/cloud.js` | Auto-Speichern, Cloud-Spielstände, Region |

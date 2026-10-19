@@ -128,6 +128,7 @@ class View {
     const x0 = Math.max(0, Math.floor(-offX / ts) - 1), y0 = Math.max(0, Math.floor(-offY / ts) - 1);
     const x1 = Math.min(W - 1, Math.ceil((cw - offX) / ts)), y1 = Math.min(H - 1, Math.ceil((ch - offY) / ts));
     const drawn = new Set();
+    const season = Seasons.variantOf(c.month);
     const blink = Math.floor(time / 500) % 2 === 0;
     const zonesVisible = [];
 
@@ -142,12 +143,17 @@ class View {
           drawn.add(id);
           const z = c.zones.get(id);
           if (!z) continue;
-          const img = GFX.zoneImage(z);
+          const orig = GFX.zoneImage(z);
+          const img = Seasons.apply(orig, season);
           ctx.drawImage(img, offX + z.x * ts, offY + z.y * ts, z.size * ts, z.size * ts);
+          // R/C/I-Markierung leerer Zonen behält in jeder Jahreszeit ihre Farbe
+          if (img !== orig && z.type <= Z.IND && z.den === 0 && !z.special) {
+            ctx.drawImage(orig, TS, TS, TS, TS, offX + (z.x + 1) * ts, offY + (z.y + 1) * ts, ts, ts);
+          }
           zonesVisible.push(z);
           continue;
         }
-        ctx.drawImage(this.tileImage(x, y, animFrame), sx, sy, ts, ts);
+        ctx.drawImage(Seasons.apply(this.tileImage(x, y, animFrame), season), sx, sy, ts, ts);
         if ((k === T.ROAD || k === T.ROADBRIDGE) && c.vari[i]) {
           const lvl = roadLevel(c, i);
           const m = k === T.ROAD ? c.roadMask(x, y) : (this.bridgeOrient(x, y, isRoadK) ? 5 : 10);
@@ -165,6 +171,9 @@ class View {
 
     // Objekte
     this.drawSprites(ctx, offX, offY, time);
+
+    // Wetter (Schnee, Regen, Laub) über der Stadt
+    Seasons.drawWeather(ctx, cw, ch, time, paused, c);
 
     // Zusätzliche Ebenen (z. B. Mauszeiger anderer Spieler im Multiplayer)
     if (this.afterDraw) this.afterDraw(ctx, offX, offY, ts, time);
