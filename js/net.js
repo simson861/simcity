@@ -26,6 +26,8 @@ const Net = {
         databaseURL: 'http://127.0.0.1:' + dbPort + '/?ns=demo-simcity' };
     }
     if (!cfg || typeof firebase === 'undefined') { this.updateIndicator(); return; }
+    // Häufiger Tippfehler beim Eintragen: „Key“ statt „apiKey“
+    if (!cfg.apiKey && cfg.Key) cfg = Object.assign({ apiKey: cfg.Key }, cfg);
     try {
       firebase.initializeApp(cfg);
       this.auth = firebase.auth();
@@ -37,6 +39,7 @@ const Net = {
       this.available = true;
     } catch (e) {
       console.error('Firebase konnte nicht gestartet werden', e);
+      this.initError = (e && (e.code || e.message)) || 'unbekannt';
       this.updateIndicator();
       return;
     }
@@ -133,6 +136,13 @@ const Net = {
   updateIndicator() {
     const el = document.getElementById('st-online');
     if (!el) return;
+    if (this.initError) {
+      el.hidden = false;
+      el.classList.remove('on');
+      el.textContent = '⚠ Online-Fehler';
+      el.title = 'Firebase konnte nicht gestartet werden: ' + this.initError + ' – bitte js/firebase-config.js prüfen.';
+      return;
+    }
     if (!this.available) { el.hidden = true; return; }
     el.hidden = false;
     el.classList.toggle('on', !!this.user && this.connected);

@@ -10,10 +10,12 @@
   Net.init();
   if (typeof Cloud !== 'undefined') Cloud.init(city, view);
   if (typeof Coop !== 'undefined') Coop.init(city, view);
+  UI.startButtons.unshift({ label: 'Mit Google anmelden', fn: () => { UI.startScreen(); Net.signIn(); }, show: () => Net.available && !Net.user });
   UI.buildMenus();
   Net.on(t => { if (t === 'auth') UI.buildMenus(); });
   document.getElementById('st-online').addEventListener('click', () => {
-    if (!Net.user) Net.signIn();
+    if (Net.initError) UI.alert('Online-Fehler', `<p style="max-width:340px">Firebase konnte nicht gestartet werden (<code>${Net.initError}</code>). Bitte die Werte in <code>js/firebase-config.js</code> prüfen.</p>`);
+    else if (!Net.user) Net.signIn();
     else UI.confirm('Abmelden', `<p>Angemeldet als <b>${Net.name}</b>. Abmelden?</p>`, 'Abmelden', () => Net.signOut());
   });
   view.centerOn(W / 2, H / 2);

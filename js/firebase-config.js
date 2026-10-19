@@ -22,7 +22,7 @@
  * Firebase-Emulator die Seite mit „?emulator“ aufrufen (siehe ONLINE-EINRICHTUNG.md).
  */
 const FIREBASE_CONFIG = {
-  Key: "AIzaSyB_IysWsP7rV-1bZR7q4G9-zOPxt0XhXJA",
+  apiKey: "AIzaSyB_IysWsP7rV-1bZR7q4G9-zOPxt0XhXJA",
   authDomain: "simcity-nachbau.firebaseapp.com",
   databaseURL: "https://simcity-nachbau-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "simcity-nachbau",
