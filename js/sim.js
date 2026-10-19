@@ -8,6 +8,7 @@
 const TAX_TABLE = [200, 150, 120, 100, 80, 50, 30, 0, -10, -40, -100, -150, -200, -250, -300, -350, -400, -450, -500, -550, -600];
 const R_LEVELS = [0.7, 0.9, 1.2];
 const F_LEVELS = [1.4, 1.2, 0.8];
+const LOAN_AMOUNT = 10000, LOAN_MAX = 5;
 const DIS_CHANCE = [10 * 48, 5 * 48, 60];
 const MELTDOWN_TABLE = [30000, 20000, 10000];
 // Scan-Häufigkeit je Tempo (langsam/mittel/schnell), wie im Original
@@ -60,7 +61,7 @@ Object.assign(City.prototype, {
         break;
       case 9:
         this.finishCensus();
-        if (this.cityTime % 4 === 0) this.take10Census();
+        if (this.cityTime % 4 === 0) { this.take10Census(); this.collectMonthlyTax(); }
         if (this.cityTime % 48 === 0) this.take120Census();   // 120-Jahre-Grafik: ein Wert pro Jahr
         if (this.cityTime % 48 === 0) { this.collectTax(); this.evaluate(); }
         this.scenarioCheck();
@@ -803,16 +804,56 @@ Object.assign(City.prototype, {
   },
 
   // ================= Haushalt =================
+  /** Jährlicher Steuerertrag beim aktuellen Steuersatz (Formel des Originals × Steuerertrag-Option). */
+  calcTaxFund() {
+    return Math.floor(this.totalPop * this.landValueAverage / 120 * this.cityTax * F_LEVELS[this.level] * (this.taxBoost || 1));
+  },
+
   computeBudgetRequests() {
     const s = this.stats;
     this.policeFund = s.policePop * 100;
     this.fireFund = s.firestPop * 100;
     this.roadFund = Math.floor((s.roadTotal + s.railTotal * 2) * R_LEVELS[this.level]);
-    this.taxFund = Math.floor(this.totalPop * this.landValueAverage / 120 * this.cityTax * F_LEVELS[this.level]);
+    this.taxFund = this.calcTaxFund();
+  },
+
+  /** Erweiterung: Steuern fließen monatlich (1/12) in die Kasse statt einmal im Jahr. */
+  collectMonthlyTax() {
+    if (this.totalPop <= 0) return;
+    const m = Math.floor(this.calcTaxFund() / 12);
+    if (m <= 0) return;
+    this.funds += m;
+    this.taxPaidYear = (this.taxPaidYear || 0) + m;
+    this.emit('funds');
+  },
+
+  // ---------- Kredite (Erweiterung, angelehnt an die Anleihen aus SimCity 2000) ----------
+  loanRate() { return [0.05, 0.07, 0.09][this.level]; },
+  loanTotal() { return (this.loans || []).reduce((a, l) => a + l.amount, 0); },
+  loanInterest() { return Math.round((this.loans || []).reduce((a, l) => a + l.amount * l.rate, 0)); },
+  takeLoan() {
+    if (!this.loans) this.loans = [];
+    if (this.loans.length >= LOAN_MAX) return { ok: false, err: `Mehr als ${LOAN_MAX} Kredite gibt die Bank nicht.` };
+    this.loans.push({ amount: LOAN_AMOUNT, rate: this.loanRate() });
+    this.funds += LOAN_AMOUNT;
+    this.emit('funds');
+    return { ok: true };
+  },
+  repayLoan() {
+    if (!this.loans || !this.loans.length) return { ok: false, err: 'Es gibt keinen offenen Kredit.' };
+    const l = this.loans[this.loans.length - 1];
+    if (this.funds < l.amount) return { ok: false, err: `Zum Tilgen fehlen ${fmtMoney(l.amount - this.funds)}.` };
+    this.funds -= l.amount;
+    this.loans.pop();
+    this.emit('funds');
+    return { ok: true };
   },
 
   collectTax() {
     this.computeBudgetRequests();
+    // Eingenommen wurde bereits monatlich – im Abschluss zählt das tatsächlich Kassierte
+    this.taxFund = this.taxPaidYear || 0;
+    this.taxPaidYear = 0;
     this.prevFunds = this.funds;
     if (this.totalPop > 0) {
       if (this.autoBudget) {
@@ -834,13 +875,15 @@ Object.assign(City.prototype, {
       fire: Math.round(this.fireFund * this.firePct),
       police: Math.round(this.policeFund * this.policePct),
     };
-    let avail = this.funds + this.taxFund;
+    // Steuern sind schon in der Kasse (monatlich); Zinsen werden zuerst bezahlt
+    const interest = this.loanInterest();
+    let avail = Math.max(0, this.funds - interest);
     const spend = { road: 0, fire: 0, police: 0 };
     for (const key of ['road', 'fire', 'police']) {
       const v = Math.max(0, Math.min(req[key], avail));
       spend[key] = v; avail -= v;
     }
-    return { req, spend, total: spend.road + spend.fire + spend.police };
+    return { req, spend, interest, total: spend.road + spend.fire + spend.police + interest };
   },
 
   updateFundEffects(spend) {
@@ -856,14 +899,15 @@ Object.assign(City.prototype, {
   finishBudget(auto) {
     const plan = this.budgetPlan();
     this.roadSpend = plan.spend.road; this.fireSpend = plan.spend.fire; this.policeSpend = plan.spend.police;
-    if (auto && plan.total < plan.req.road + plan.req.fire + plan.req.police) {
+    if (auto && plan.total - plan.interest < plan.req.road + plan.req.fire + plan.req.police) {
       this.message('Die Stadtkasse ist leer! Nicht alle Ausgaben gedeckt.', undefined, undefined, true);
       if (this.roadFund) this.roadPct = plan.spend.road / this.roadFund;
       if (this.fireFund) this.firePct = plan.spend.fire / this.fireFund;
       if (this.policeFund) this.policePct = plan.spend.police / this.policeFund;
     }
     this.cashFlow = this.taxFund - plan.total;
-    this.funds += this.cashFlow;
+    this.interestPaid = plan.interest;
+    this.funds -= plan.total;
     this.updateFundEffects(plan.spend);
     this.emit('funds');
   },

@@ -120,6 +120,11 @@ class City {
     this.taxFund = 0; this.roadFund = 0; this.fireFund = 0; this.policeFund = 0;
     this.roadSpend = 0; this.fireSpend = 0; this.policeSpend = 0;
     this.cashFlow = 0; this.prevFunds = this.funds;
+    // Erweiterungen gegen Geldnot (nicht im Original):
+    this.taxBoost = 3;          // Steuerertrag: 1 = wie 1989, 3 = erhöht (Standard), 5 = hoch
+    this.taxPaidYear = 0;       // Steuern werden monatlich eingezogen; Summe des laufenden Jahres
+    this.loans = [];            // Kredite: [{ amount, rate }]
+    this.interestPaid = 0;      // im letzten Haushaltsjahr gezahlte Zinsen
 
     this.resValve = 0; this.comValve = 0; this.indValve = 0;
     this.resCap = false; this.comCap = false; this.indCap = false;
@@ -487,7 +492,7 @@ class City {
       'roadEffect', 'policeEffect', 'fireEffect', 'resValve', 'comValve', 'indValve', 'cityScore', 'cityScoreDelta',
       'cityPop', 'cityPopDelta', 'lastCityPop', 'cityClass', 'cityYes', 'cityAssessedValue', 'problemTable', 'problemVotes', 'problemOrder',
       'autoBulldoze', 'autoBudget', 'autoGoto', 'disastersEnabled', 'soundOn', 'scenario', 'disasterEvent', 'disasterWait',
-      'scoreType', 'scoreWait', 'nextZoneId', 'cashFlow', 'taxFund', 'roadFund', 'fireFund', 'policeFund', 'crimeRamp', 'pollutionRamp',
+      'scoreType', 'scoreWait', 'taxBoost', 'taxPaidYear', 'loans', 'interestPaid', 'nextZoneId', 'cashFlow', 'taxFund', 'roadFund', 'fireFund', 'policeFund', 'crimeRamp', 'pollutionRamp',
       'cityCenterX', 'cityCenterY', 'stats', 'totalPop', 'speed', 'prevFunds'];
     const o = { format: 'simcity1989-nachbau', version: 1 };
     for (const key of keep) o[key] = this[key];

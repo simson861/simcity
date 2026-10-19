@@ -1061,7 +1061,12 @@ const UI = {
       ${yearEnd ? '<div class="news"><b>Haushaltsabschluss ' + (c.year - 1) + '</b><br>Lege Steuersatz und Mittel für das kommende Jahr fest.</div>' : ''}
       <h3>Steuern</h3>
       <div class="row"><span style="width:110px">Steuersatz:</span><input type="range" id="b-tax" min="0" max="20" step="1"><b id="b-taxv"></b></div>
-      <div class="grid2" style="margin-left:4px"><span>Steuereinnahmen (Jahr):</span><span class="r" id="b-taxfund"></span></div>
+      <div class="row"><span style="width:110px">Steuerertrag:</span><select id="b-boost">
+        <option value="1">wie 1989 (Original)</option><option value="3">erhöht (×3)</option><option value="5">hoch (×5)</option></select></div>
+      <div class="grid2" style="margin-left:4px">
+        <span id="b-taxlabel"></span><span class="r" id="b-taxfund"></span>
+        <span>Monatlich in die Kasse:</span><span class="r" id="b-taxmonth"></span>
+      </div>
       <h3>Ausgaben</h3>
       <div class="sunken" style="background:#d8d8d8">
       <div class="row" style="font-weight:bold"><span style="width:96px"></span><span style="width:80px;text-align:right">angefordert</span><span style="width:120px;text-align:center">Anteil</span><span style="width:70px;text-align:right">bewilligt</span></div>
@@ -1069,6 +1074,12 @@ const UI = {
       <div class="row"><span style="width:96px">${n}</span><span style="width:80px;text-align:right" id="b-${k}req"></span>
       <input type="range" id="b-${k}" min="0" max="100" step="1" style="width:90px"><b id="b-${k}p" style="width:30px"></b><span style="width:70px;text-align:right" id="b-${k}sp"></span></div>`; }).join('')}
       </div>
+      <h3>Kredite</h3>
+      <div class="grid2" style="margin-left:4px">
+        <span>Offene Kredite:</span><span class="r" id="b-loans"></span>
+        <span>Zinsen pro Jahr:</span><span class="r" id="b-interest"></span>
+      </div>
+      <div class="row"><button class="btn small" id="b-loan">Kredit aufnehmen (${fmtMoney(LOAN_AMOUNT)})</button><button class="btn small" id="b-repay">Kredit tilgen</button></div>
       <h3>Bilanz</h3>
       <div class="grid2" style="margin-left:4px">
         <span>Kassenstand Vorjahr:</span><span class="r" id="b-prev"></span>
@@ -1083,20 +1094,29 @@ const UI = {
       c.roadPct = +$('#b-road').value / 100;
       c.firePct = +$('#b-fire').value / 100;
       c.policePct = +$('#b-police').value / 100;
-      c.taxFund = Math.floor(c.totalPop * c.landValueAverage / 120 * c.cityTax * F_LEVELS[c.level]);
+      c.taxBoost = +$('#b-boost').value;
+      // Am Jahresende zählen die tatsächlich eingenommenen Steuern, sonst die Prognose
+      const projected = c.calcTaxFund();
+      if (!yearEnd) c.taxFund = projected;
       const plan = c.budgetPlan();
       $('#b-taxv').textContent = c.cityTax + ' %';
+      $('#b-taxlabel').textContent = yearEnd ? 'Steuereinnahmen (Vorjahr):' : 'Steuereinnahmen (Jahr, Prognose):';
       $('#b-taxfund').textContent = fmtMoney(c.taxFund);
+      $('#b-taxmonth').textContent = fmtMoney(Math.floor(projected / 12));
+      $('#b-loans').textContent = c.loans.length + ' × ' + fmtMoney(LOAN_AMOUNT) + ' = ' + fmtMoney(c.loanTotal());
+      $('#b-interest').textContent = fmtMoney(c.loanInterest()) + (c.loans.length ? '' : ` (Zins ${Math.round(c.loanRate() * 100)} %)`);
+      $('#b-repay').disabled = !c.loans.length;
+      $('#b-loan').disabled = c.loans.length >= LOAN_MAX;
       for (const k of ['road', 'fire', 'police']) {
         $('#b-' + k + 'req').textContent = fmtMoney(c[k + 'Fund']);
         $('#b-' + k + 'p').textContent = Math.round(c[k + 'Pct'] * 100) + '%';
         $('#b-' + k + 'sp').textContent = fmtMoney(plan.spend[k]);
       }
-      const flow = c.taxFund - plan.total;
+      const flow = (yearEnd ? c.taxFund : projected) - plan.total;
       $('#b-prev').textContent = fmtMoney(yearEnd ? c.prevFunds : c.funds);
-      $('#b-flow').textContent = (flow >= 0 ? '+' : '') + fmtMoney(flow);
+      $('#b-flow').textContent = (flow >= 0 ? '+' : '') + fmtMoney(flow) + (yearEnd ? '' : ' / Jahr');
       $('#b-flow').style.color = flow >= 0 ? '#006000' : '#a00000';
-      $('#b-cur').textContent = fmtMoney(c.funds + (yearEnd ? flow : 0));
+      $('#b-cur').textContent = fmtMoney(c.funds - (yearEnd ? plan.total : 0));
       if (!yearEnd) c.updateFundEffects(plan.spend);
     };
     $('#b-tax').value = c.cityTax;
@@ -1104,6 +1124,18 @@ const UI = {
     $('#b-fire').value = Math.round(c.firePct * 100);
     $('#b-police').value = Math.round(c.policePct * 100);
     $('#b-auto').checked = c.autoBudget;
+    $('#b-boost').value = String(c.taxBoost || 1);
+    $('#b-boost').addEventListener('change', upd);
+    $('#b-loan').addEventListener('click', () => {
+      const r = c.takeLoan();
+      if (!r.ok) this.status(r.err, true); else { Sound.cash(); this.status(`Kredit über ${fmtMoney(LOAN_AMOUNT)} aufgenommen.`); }
+      upd();
+    });
+    $('#b-repay').addEventListener('click', () => {
+      const r = c.repayLoan();
+      if (!r.ok) this.status(r.err, true); else this.status('Kredit getilgt.');
+      upd();
+    });
     $('#b-auto').addEventListener('change', e => { c.autoBudget = e.target.checked; });
     body.querySelectorAll('input[type=range]').forEach(i => i.addEventListener('input', upd));
     upd();

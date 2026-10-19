@@ -21,6 +21,8 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 - **Karten** Stadtplan, Zonen, Stromnetz, Verkehrsnetz, Bevölkerungsdichte, Wachstum, Verkehrsdichte,
   Umweltverschmutzung, Kriminalität, Bodenwert, Feuerwehr- und Polizei-Abdeckung
 - **Grafiken** Wohnen, Gewerbe, Industrie, Geldfluss, Kriminalität, Umwelt (10 und 120 Jahre)
+- **Erweiterungen gegen Geldnot** (nicht im Original): Steuern fließen monatlich in die Kasse; Steuerertrag einstellbar
+  (wie 1989 ×1, erhöht ×3 = Standard, hoch ×5); Kredite über je $10.000 (max. 5, Zinsen 5–9 % je nach Schwierigkeit, jederzeit tilgbar)
 - **Haushalt** jährlich im Januar: Steuersatz 0–20 %, Mittel für Verkehr, Feuerwehr, Polizei; Auto-Budget;
   Straßenverfall bei Unterfinanzierung
 - **Bewertung** Bürgerumfrage, größte Probleme, Einwohner, Zuwanderung, Grundstückswert, Stadtkategorie, Wertung 0–1000
