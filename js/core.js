@@ -61,7 +61,11 @@ function isRailK(k) { return k === T.RAIL || k === T.RAILWIRE || k === T.ROADRAI
 function isWireK(k) { return k === T.WIRE || k === T.ROADWIRE || k === T.RAILWIRE || k === T.WIREWATER; }
 function isDriveK(k) { return isRoadK(k) || isRailK(k); }
 function isCondK(k) { return isWireK(k) || k === T.ZONE; }
-function isBurnK(k) { return k === T.TREES || k === T.PARK || k === T.WIRE || k === T.RAIL || k === T.RAILWIRE || k === T.ZONE; }
+// brennbar (BURNBIT im Original): Wald, Park, Leitungen, Straßen, Schienen und Kreuzungen an Land, Zonen – nicht Brücken
+function isBurnK(k) {
+  return k === T.TREES || k === T.PARK || k === T.WIRE || k === T.RAIL || k === T.RAILWIRE || k === T.ZONE ||
+    k === T.ROAD || k === T.ROADWIRE || k === T.ROADRAIL;
+}
 function isWaterK(k) { return k === T.WATER || k === T.ROADBRIDGE || k === T.RAILBRIDGE || k === T.WIREWATER; }
 function isAutoClearK(k) { return k === T.TREES || k === T.RUBBLE || k === T.FLOOD; }
 function isNaturalK(k) { return k === T.WATER || k === T.TREES || k === T.PARK; }

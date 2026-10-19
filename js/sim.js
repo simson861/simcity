@@ -4,7 +4,8 @@
  * Ein Zyklus entspricht einer Woche Spielzeit (48 pro Jahr).
  */
 
-const TAX_TABLE = [200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 0, -10, -40, -80, -120, -160, -200, -240, -280, -320, -360];
+// Steuertabelle für die Nachfrage (setValves) – exakt wie im Original (Micropolis simulate.cpp)
+const TAX_TABLE = [200, 150, 120, 100, 80, 50, 30, 0, -10, -40, -100, -150, -200, -250, -300, -350, -400, -450, -500, -550, -600];
 const R_LEVELS = [0.7, 0.9, 1.2];
 const F_LEVELS = [1.4, 1.2, 0.8];
 const DIS_CHANCE = [10 * 48, 5 * 48, 60];
@@ -60,7 +61,7 @@ Object.assign(City.prototype, {
       case 9:
         this.finishCensus();
         if (this.cityTime % 4 === 0) this.take10Census();
-        if (this.cityTime % 40 === 0) this.take120Census();
+        if (this.cityTime % 48 === 0) this.take120Census();   // 120-Jahre-Grafik: ein Wert pro Jahr
         if (this.cityTime % 48 === 0) { this.collectTax(); this.evaluate(); }
         this.scenarioCheck();
         this.emit('census');
@@ -116,11 +117,6 @@ Object.assign(City.prototype, {
   finishCensus() {
     this.stats = this.cen;
     this.cen = City.emptyCensus();
-    const s = this.stats;
-    // Bedarf an Krankenhäusern und Kirchen
-    const want = s.resPop >> 8;
-    this.needHospital = want > s.hospitalPop ? 1 : want < s.hospitalPop ? -1 : 0;
-    this.needChurch = want > s.churchPop ? 1 : want < s.churchPop ? -1 : 0;
   },
 
   // ================= Kartenabtastung =================
@@ -148,15 +144,18 @@ Object.assign(City.prototype, {
             break;
           }
           default:
-            if (isRoadK(k)) this.doRoad(x, y, k);
+            // Straßen-Schienen-Kreuzungen zählen (wie im Original) als Schiene
             if (isRailK(k)) this.doRail(x, y, k);
+            else if (isRoadK(k)) this.doRoad(x, y, k);
         }
       }
     }
   },
 
   doRoad(x, y, k) {
-    this.cen.roadTotal += k === T.ROADBRIDGE ? 4 : 1;
+    // Brücke zählt 5 Felder (1 + 4), starker Verkehr doppelt – wie doRoad() im Original
+    this.cen.roadTotal += k === T.ROADBRIDGE ? 5 : 1;
+    if (k !== T.ROADBRIDGE && this.trafficDensity[(x >> 1) + (y >> 1) * HW] >= 192) this.cen.roadTotal++;
     if (this.censusOnly) return;
     if (this.roadEffect < 30 && (rand16() & 511) === 0 && k !== T.ROADWIRE && this.roadEffect < (rand16() & 31)) {
       if (k === T.ROADBRIDGE) this.setTile(x, y, T.WATER, 0);
@@ -165,7 +164,7 @@ Object.assign(City.prototype, {
   },
 
   doRail(x, y, k) {
-    this.cen.railTotal += k === T.RAILBRIDGE ? 4 : 1;
+    this.cen.railTotal++;
     if (this.censusOnly) return;
     if (this.totalPop > 20 && !this.findSprite(SPR.TRAIN) && rand(25) === 0 && k === T.RAIL) this.makeSprite(SPR.TRAIN, x, y);
     if (this.roadEffect < 30 && (rand16() & 511) === 0 && k !== T.RAILWIRE && this.roadEffect < (rand16() & 31)) {
@@ -191,19 +190,18 @@ Object.assign(City.prototype, {
     if (rand(rate) === 0) this.setTile(x, y, T.RUBBLE, rand(3));
   },
 
-  /** Feuer greift auf eine Zone über: Zone zerstört, Brandherd bleibt. */
+  /** Feuer greift auf eine Zone über (fireZone im Original). Vereinfachung des Zonenmodells: Im Original
+   *  brennt nur das erreichte Feld, die Zone stirbt erst, wenn das Feuer ihre Mitte erreicht – hier brennt
+   *  die Zone sofort ab: Trümmer, Brandherde am erreichten Feld und in der Mitte. */
   burnZone(z, fx, fy) {
     if (!z) return;
     const ri = (zoneCX(z) >> 3) + (zoneCY(z) >> 3) * EW;
     this.rateOfGrowth[ri] = clamp(this.rateOfGrowth[ri] - 20, -200, 200);
-    const explode = z.type === Z.IND && z.den > 0 || z.type === Z.COAL || z.type === Z.NUCLEAR || z.type === Z.PORT || z.type === Z.AIRPORT;
+    // Original: Zonenmitte mit Feldnummer > IZB explodiert (bebaute Industrie und alle Sonderbauten)
+    const explode = z.type > Z.IND || (z.type === Z.IND && z.den > 0);
     this.removeZone(z, T.RUBBLE);
     this.setTile(fx, fy, T.FIRE, rand(3));
     this.setTile(zoneCX(z), zoneCY(z), T.FIRE, rand(3));
-    for (let n = 0; n < z.size - 2; n++) {
-      const xx = z.x + rand(z.size - 1), yy = z.y + rand(z.size - 1);
-      this.setTile(xx, yy, T.FIRE, rand(3));
-    }
     if (explode) this.makeExplosionAt(zoneCX(z), zoneCY(z));
   },
 
@@ -411,8 +409,8 @@ Object.assign(City.prototype, {
     switch (z.type) {
       case Z.COAL: this.cen.coalPop++; break;
       case Z.NUCLEAR:
+        if (!this.censusOnly && this.disastersEnabled && rand(MELTDOWN_TABLE[this.level]) === 0) { this.doMeltdown(z); break; }
         this.cen.nuclearPop++;
-        if (!this.censusOnly && this.disastersEnabled && rand(MELTDOWN_TABLE[this.level]) === 0) this.doMeltdown(z);
         break;
       case Z.FIRE: {
         this.cen.firestPop++;
@@ -443,22 +441,23 @@ Object.assign(City.prototype, {
       case Z.AIRPORT:
         this.cen.airportPop++;
         if (this.censusOnly || !powered) break;
-        if (rand(5) === 0 && !this.findSprite(SPR.PLANE)) this.makeSprite(SPR.PLANE, cx + 2, cy + 3);
-        if (rand(12) === 0 && !this.findSprite(SPR.COPTER)) this.makeSprite(SPR.COPTER, cx, cy);
+        // doAirport(): 1/6 Flugzeug, sonst 1/13 Hubschrauber (jeweils nur einer gleichzeitig)
+        if (rand(5) === 0) { if (!this.findSprite(SPR.PLANE)) this.makeSprite(SPR.PLANE, cx + 2, cy + 3); }
+        else if (rand(12) === 0 && !this.findSprite(SPR.COPTER)) this.makeSprite(SPR.COPTER, cx, cy);
         break;
     }
   },
 
   // ================= Verkehr =================
+  // Straße am Zonenrand suchen – Reihenfolge wie im Original: oben (l→r), rechts (o→u), unten (r→l), links (u→o);
+  // Ecken zählen nicht. Für 3x3-Zonen exakt die zwölf Felder von findPerimeterRoad().
   findPerimeterRoad(z) {
-    const s = z.size;
-    for (let x = z.x - 1; x <= z.x + s; x++) {
-      for (let y = z.y - 1; y <= z.y + s; y++) {
-        if (x !== z.x - 1 && x !== z.x + s && y !== z.y - 1 && y !== z.y + s) continue;
-        if ((x === z.x - 1 || x === z.x + s) && (y === z.y - 1 || y === z.y + s)) continue; // Ecken nicht
-        if (inBounds(x, y) && isDriveK(this.tile[idx(x, y)])) return idx(x, y);
-      }
-    }
+    const s = z.size, x0 = z.x, y0 = z.y;
+    const test = (x, y) => inBounds(x, y) && isDriveK(this.tile[idx(x, y)]);
+    for (let x = x0; x < x0 + s; x++) if (test(x, y0 - 1)) return idx(x, y0 - 1);
+    for (let y = y0; y < y0 + s; y++) if (test(x0 + s, y)) return idx(x0 + s, y);
+    for (let x = x0 + s - 1; x >= x0; x--) if (test(x, y0 + s)) return idx(x, y0 + s);
+    for (let y = y0 + s - 1; y >= y0; y--) if (test(x0 - 1, y)) return idx(x0 - 1, y);
     return -1;
   },
 
@@ -491,18 +490,21 @@ Object.assign(City.prototype, {
     return false;
   },
 
+  // Wie tryGo() im Original: keine Umkehr; in der Sackgasse -1 (tryDrive geht dann zurück,
+  // ohne die Position zu ändern – die Fahrt scheitert damit praktisch).
   tryGo(x, y, dirLast) {
-    const r = rand16() & 3;
-    const opts = [];
-    for (let i = r; i < r + 4; i++) {
-      const d = i & 3;
+    const ok = [false, false, false, false];
+    let count = 0, only = -1;
+    for (let d = 0; d < 4; d++) {
       if (d === dirLast) continue;
       const nx = x + DX[d], ny = y + DY[d];
-      if (inBounds(nx, ny) && isDriveK(this.tile[idx(nx, ny)])) opts.push(d);
+      if (inBounds(nx, ny) && isDriveK(this.tile[idx(nx, ny)])) { ok[d] = true; count++; only = d; }
     }
-    if (opts.length === 0) return dirLast;          // Sackgasse: umkehren
-    if (opts.length === 1) return opts[0];
-    return opts[rand(opts.length - 1)];
+    if (count === 0) return -1;
+    if (count === 1) return only;
+    let i = rand16() & 3;
+    while (!ok[i]) i = (i + 1) & 3;
+    return i;
   },
 
   driveDone(x, y, dest) {
@@ -522,7 +524,8 @@ Object.assign(City.prototype, {
   addToTrafficDensity(stack) {
     for (const i of stack) {
       const k = this.tile[i];
-      if (!isDriveK(k)) continue;
+      // nur Straßenfelder (Schiene und Bahnübergang erzeugen keinen Verkehr – wichtig für Bern)
+      if (k !== T.ROAD && k !== T.ROADWIRE && k !== T.ROADBRIDGE) continue;
       const x = i % W, y = (i / W) | 0;
       const h = (x >> 1) + (y >> 1) * HW;
       let t = this.trafficDensity[h] + 50;
@@ -717,7 +720,7 @@ Object.assign(City.prototype, {
     if (zt) { this.cityCenterX = Math.floor(xt / zt); this.cityCenterY = Math.floor(yt / zt); }
     else { this.cityCenterX = W / 2; this.cityCenterY = H / 2; }
     for (let ey = 0; ey < EH; ey++) for (let ex = 0; ex < EW; ex++) {
-      const d = this.cityCenterDistance(ex * 8 + 4, ey * 8 + 4);
+      const d = this.cityCenterDistance(ex * 8, ey * 8);
       this.comRate[ex + ey * EW] = 64 - (d >> 1) * 4;
     }
   },
@@ -769,6 +772,10 @@ Object.assign(City.prototype, {
     this.pollutionRamp += (this.pollutionAverage - this.pollutionRamp) / 4;
     h.pollution[0] = Math.min(255, Math.round(this.pollutionRamp));
     h.money[0] = clamp(Math.round(this.cashFlow / 20) + 128, 0, 255);
+    // Bedarf an Krankenhäusern und Kirchen (im Original ebenfalls in take10Census)
+    const want = s.resPop >> 8;
+    this.needHospital = want > s.hospitalPop ? 1 : want < s.hospitalPop ? -1 : 0;
+    this.needChurch = want > s.churchPop ? 1 : want < s.churchPop ? -1 : 0;
   },
 
   take120Census() {
@@ -887,9 +894,9 @@ Object.assign(City.prototype, {
   },
 
   getTrafficAverage() {
-    let total = 0, count = 0;
+    let total = 0, count = 1;          // Original beginnt bei 1
     for (let i = 0; i < HW * HH; i++) if (this.landValue[i]) { total += this.trafficDensity[i]; count++; }
-    this.trafficAverage = count ? Math.floor(total / count * 2.4) : 0;
+    this.trafficAverage = Math.floor(Math.floor(total / count) * 2.4);
     return this.trafficAverage;
   },
 
@@ -898,7 +905,8 @@ Object.assign(City.prototype, {
     const b = (s.comPop + s.indPop) * 8;
     if (b === 0) return 0;
     const r = s.resPop / b;
-    return clamp(Math.round((r - 1) * 255), 0, 255);
+    // wie im Original nur nach oben begrenzt: Arbeitskräftemangel ergibt negative Werte (verbessert die Wertung)
+    return Math.min(Math.trunc((r - 1) * 255), 255);
   },
 
   getFireSeverity() { return Math.min(this.stats.firePop * 5, 255); },
@@ -918,7 +926,7 @@ Object.assign(City.prototype, {
     let x = 0, z = 0, count = 0;
     while (z < 100 && count < 600) {
       if (rand(300) < p[x]) { v[x]++; z++; }
-      x = (x + 1) % 7;
+      x = (x + 1) % 11;               // Original durchläuft PROBNUM+1 = 11 Plätze (4 davon leer)
       count++;
     }
     const order = [0, 1, 2, 3, 4, 5, 6].filter(i => v[i] > 0).sort((a, b) => v[b] - v[a]);
@@ -932,26 +940,27 @@ Object.assign(City.prototype, {
     x = Math.floor(x / 3);
     x = Math.min(x, 256);
     let z = clamp((256 - x) * 4, 0, 1000);
-    if (this.resCap) z *= 0.85;
-    if (this.comCap) z *= 0.85;
-    if (this.indCap) z *= 0.85;
+    const t = Math.trunc;                // ganzzahlige Rechnung wie im Original
+    if (this.resCap) z = t(z * 0.85);
+    if (this.comCap) z = t(z * 0.85);
+    if (this.indCap) z = t(z * 0.85);
     if (this.roadEffect < MAX_ROAD_EFFECT) z -= MAX_ROAD_EFFECT - this.roadEffect;
-    if (this.policeEffect < MAX_POLICE_EFFECT) z *= 0.9 + this.policeEffect / (10.0001 * MAX_POLICE_EFFECT);
-    if (this.fireEffect < MAX_FIRE_EFFECT) z *= 0.9 + this.fireEffect / (10.0001 * MAX_FIRE_EFFECT);
-    if (this.resValve < -1000) z *= 0.85;
-    if (this.comValve < -1000) z *= 0.85;
-    if (this.indValve < -1000) z *= 0.85;
+    if (this.policeEffect < MAX_POLICE_EFFECT) z = t(z * (0.9 + this.policeEffect / (10.0001 * MAX_POLICE_EFFECT)));
+    if (this.fireEffect < MAX_FIRE_EFFECT) z = t(z * (0.9 + this.fireEffect / (10.0001 * MAX_FIRE_EFFECT)));
+    if (this.resValve < -1000) z = t(z * 0.85);
+    if (this.comValve < -1000) z = t(z * 0.85);
+    if (this.indValve < -1000) z = t(z * 0.85);
     let SM = 1;
     if (this.cityPop === 0 || this.cityPopDelta === 0 || this.cityPopDelta === this.cityPop) SM = 1;
     else if (this.cityPopDelta > 0) SM = this.cityPopDelta / this.cityPop + 1;
     else SM = 0.95 + this.cityPopDelta / (this.cityPop - this.cityPopDelta);
-    z *= SM;
+    z = t(z * SM);
     z -= this.getFireSeverity();
     z -= this.cityTax;
     const TM = this.stats.unpoweredZones + this.stats.poweredZones;
-    z *= TM ? this.stats.poweredZones / TM : 1;
-    z = clamp(Math.round(z), 0, 1000);
-    this.cityScore = Math.round((this.cityScore + z) / 2);
+    if (TM) z = t(z * this.stats.poweredZones / TM);
+    z = clamp(z, 0, 1000);
+    this.cityScore = (this.cityScore + z) >> 1;
     this.cityScoreDelta = this.cityScore - old;
   },
 

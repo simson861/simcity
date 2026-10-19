@@ -19,6 +19,7 @@ Object.assign(City.prototype, {
         break;
       case SPR.COPTER:
         s.count = 1500; s.destX = s.x; s.destY = s.y; s.leaving = false;
+        s.origX = s.x; s.origY = s.y;          // Landeplatz (Flughafen)
         break;
       case SPR.PLANE:
         s.count = 600; s.dir = 1;
@@ -62,56 +63,52 @@ Object.assign(City.prototype, {
     if (this.shake > 0) this.shake--;
   },
 
-  /** Zusammenstöße: Flugzeug/Hubschrauber, Schiff mit Monster/Tornado. */
+  /** Zusammenstöße wie im Original: Flugzeug/Hubschrauber (nur bei aktivierten Katastrophen);
+   *  Monster und Tornado bringen Flugzeug, Hubschrauber, Schiff und Zug zur Explosion. */
   checkCollisions() {
     const near = (a, b, d) => Math.abs(a.x - b.x) < d && Math.abs(a.y - b.y) < d;
     const plane = this.findSprite(SPR.PLANE), copter = this.findSprite(SPR.COPTER);
-    if (plane && copter && !plane.crashing && plane.alt > 0.5 && near(plane, copter, 10)) {
+    if (this.disastersEnabled && plane && copter && !plane.crashing && plane.alt > 0.5 && near(plane, copter, 10)) {
       copter.dead = true;
       plane.crashing = true;
       const tx = (copter.x / 16) | 0, ty = (copter.y / 16) | 0;
       this.makeExplosionAt(tx, ty);
       this.message('Zusammenstoß in der Luft! Flugzeugabsturz!', tx, ty, true);
     }
-    const ship = this.findSprite(SPR.SHIP);
-    if (ship) {
-      for (const t of [SPR.MONSTER, SPR.TORNADO]) {
-        const o = this.findSprite(t);
-        if (o && near(ship, o, 14)) {
-          ship.dead = true;
-          const tx = (ship.x / 16) | 0, ty = (ship.y / 16) | 0;
-          this.makeExplosionAt(tx, ty);
-          this.message('Schiffsunglück gemeldet!', tx, ty, true);
-          break;
-        }
+    const msgs = {
+      [SPR.SHIP]: 'Schiffsunglück gemeldet!', [SPR.TRAIN]: 'Zugunglück!',
+      [SPR.COPTER]: 'Hubschrauberabsturz gemeldet!', [SPR.PLANE]: 'Flugzeugabsturz!',
+    };
+    for (const t of [SPR.MONSTER, SPR.TORNADO]) {
+      const o = this.findSprite(t);
+      if (!o) continue;
+      for (const v of this.sprites) {
+        if (v.dead || !msgs[v.type] || v.crashing || !near(v, o, 14)) continue;
+        const tx = (v.x / 16) | 0, ty = (v.y / 16) | 0;
+        if (v.type === SPR.PLANE) { v.crashing = true; v.alt = Math.min(v.alt, 0.3); }
+        else { v.dead = true; this.makeExplosionAt(tx, ty); }
+        this.message(msgs[v.type], tx, ty, true);
       }
     }
   },
 
   // ---------- Zug: fährt auf Schienen, wählt zufällig an Weichen ----------
   doTrain(s) {
-    if (!isRailK(this.kind(s.tx, s.ty))) { this.trainCrash(s); return; }
+    // Gleis weg (abgerissen/zerstört): der Zug hält und verschwindet – wie im Original kein Unglück
+    if (!isRailK(this.kind(s.tx, s.ty))) { s.dead = true; return; }
     if (s.dir < 0) { s.dir = this.pickDir(s.tx, s.ty, -1, this.railLink); if (s.dir < 0) { s.dead = true; return; } }
     s.prog += 0.125;
     if (s.prog >= 1) {
       s.trail.unshift([s.tx, s.ty]);
       if (s.trail.length > 4) s.trail.pop();
       s.tx += DX[s.dir]; s.ty += DY[s.dir]; s.prog = 0;
-      if (!inBounds(s.tx, s.ty) || !isRailK(this.kind(s.tx, s.ty))) { this.trainCrash(s); return; }
+      if (!inBounds(s.tx, s.ty) || !isRailK(this.kind(s.tx, s.ty))) { s.dead = true; return; }
       const nd = this.pickDir(s.tx, s.ty, (s.dir + 2) & 3, this.railLink);
       s.dir = nd >= 0 ? nd : (s.dir + 2) & 3;
       if (--s.count <= 0 && rand(20) === 0) s.dead = true;
     }
     s.x = (s.tx + DX[s.dir] * s.prog) * 16 + 8;
     s.y = (s.ty + DY[s.dir] * s.prog) * 16 + 8;
-  },
-
-  trainCrash(s) {
-    s.dead = true;
-    if (inBounds(s.tx, s.ty)) {
-      this.makeExplosionAt(s.tx, s.ty);
-      this.message('Zugunglück!', s.tx, s.ty, true);
-    }
   },
 
   /** Zufällige Richtung (geradeaus bevorzugt), die nicht zurückführt. */
@@ -169,11 +166,13 @@ Object.assign(City.prototype, {
 
   // ---------- Hubschrauber (Verkehrsbeobachtung) ----------
   doCopter(s) {
-    s.count--;
-    if (s.count <= 0 && !s.leaving) {
-      s.leaving = true;
-      s.destX = s.x < W * 8 ? -64 : W * 16 + 64;
-      s.destY = s.y;
+    if (s.count > 0) s.count--;
+    if (s.count <= 0) {
+      // wie im Original: zum Monster/Tornado (dort stürzt er meist ab), sonst zurück zum Flughafen und landen
+      const o = this.findSprite(SPR.MONSTER) || this.findSprite(SPR.TORNADO);
+      s.leaving = !o;
+      if (o) { s.destX = o.x; s.destY = o.y; }
+      else { s.destX = s.origX !== undefined ? s.origX : s.x; s.destY = s.origY !== undefined ? s.origY : s.y; }
     }
     const dx = s.destX - s.x, dy = s.destY - s.y;
     const d = Math.hypot(dx, dy);
@@ -285,35 +284,44 @@ Object.assign(City.prototype, {
     return s;
   },
 
+  // Explosion zerstört selbst nichts, legt aber am Ende Feuer in der Mitte und den vier Diagonalfeldern (Original)
   doExplosion(s) {
-    if (s.frame === 1) {
-      const tx = (s.x / 16) | 0, ty = (s.y / 16) | 0;
-      this.destroyTile(tx, ty);
-    }
     if (s.frame >= 24) {
       s.dead = true;
       const tx = (s.x / 16) | 0, ty = (s.y / 16) | 0;
       this.startFire(tx, ty);
-      this.startFire(tx - 1, ty); this.startFire(tx + 1, ty);
-      this.startFire(tx, ty - 1); this.startFire(tx, ty + 1);
+      this.startFire(tx - 1, ty - 1); this.startFire(tx + 1, ty - 1);
+      this.startFire(tx - 1, ty + 1); this.startFire(tx + 1, ty + 1);
     }
   },
 
+  /** Feuer auf brennbarem Feld oder freiem Boden (nicht auf Trümmern, Wasser, Brücken). */
   startFire(x, y) {
     if (!inBounds(x, y)) return;
     const k = this.tile[idx(x, y)];
     if (k === T.ZONE) { this.burnZone(this.zoneAt(x, y), x, y); return; }
-    if (k === T.DIRT || isBurnK(k) || k === T.RUBBLE) this.setTile(x, y, T.FIRE, rand(3));
+    if (k === T.DIRT || isBurnK(k)) this.setTile(x, y, T.FIRE, rand(3));
   },
 
-  /** Feld durch Monster/Tornado/Explosion zerstören. */
+  /** Feld durch Monster/Tornado zerstören (destroyMapTile im Original): wird zu Trümmern;
+   *  Straßenbrücken stürzen ein, Schienenbrücken/Unterwasserkabel bleiben. Bebaute Zonen explodieren
+   *  (Vereinfachung: die ganze Zone wird zerstört, im Original nur das getroffene Feld). */
   destroyTile(x, y) {
     const k = this.tile[idx(x, y)];
     switch (k) {
-      case T.WATER: case T.DIRT: case T.RUBBLE: case T.FIRE: case T.RAD: case T.FLOOD: return;
-      case T.ZONE: this.burnZone(this.zoneAt(x, y), x, y); return;
-      case T.ROADBRIDGE: case T.RAILBRIDGE: case T.WIREWATER: this.setTile(x, y, T.WATER, 0); return;
-      case T.TREES: case T.PARK: this.setTile(x, y, T.FIRE, rand(3)); return;
+      case T.WATER: case T.DIRT: case T.RUBBLE: case T.FIRE: case T.RAD: case T.FLOOD:
+      case T.RAILBRIDGE: case T.WIREWATER: return;
+      case T.ROADBRIDGE: this.setTile(x, y, T.WATER, 0); return;
+      case T.ZONE: {
+        const z = this.zoneAt(x, y);
+        if (!z) return;
+        const ri = (zoneCX(z) >> 3) + (zoneCY(z) >> 3) * EW;
+        this.rateOfGrowth[ri] = clamp(this.rateOfGrowth[ri] - 20, -200, 200);
+        const boom = !(z.type === Z.RES && z.den === 0 && !z.special);
+        this.removeZone(z, T.RUBBLE);
+        if (boom) this.makeExplosionAt(x, y);
+        return;
+      }
       default: this.setTile(x, y, T.RUBBLE, rand(3));
     }
   },
@@ -325,7 +333,7 @@ Object.assign(City.prototype, {
     if (!this.disastersEnabled) return;
     if (rand(DIS_CHANCE[this.level]) === 0) {
       switch (rand(8)) {
-        case 0: case 1: this.makeFire(); break;
+        case 0: case 1: this.setFire(); break;
         case 2: case 3: this.makeFlood(); break;
         case 4: break;
         case 5: this.makeTornado(); break;
@@ -335,22 +343,31 @@ Object.assign(City.prototype, {
     }
   },
 
+  /** Zufallsfeuer (setFire im Original): EIN Versuch; trifft nur Gebäudefelder bebauter Zonen (nicht die Mitte). */
+  setFire() {
+    const x = rand(W - 1), y = rand(H - 1);
+    if (this.tile[idx(x, y)] !== T.ZONE) return false;
+    const z = this.zoneAt(x, y);
+    if (!z || (x === zoneCX(z) && y === zoneCY(z))) return false;
+    if (z.type === Z.RES && z.den === 0 && !z.special && this.housesCount(z) === 0) return false;
+    this.burnZone(z, x, y);
+    this.message('Feuer gemeldet!', x, y, true);
+    return true;
+  },
+
+  /** Feuer aus dem Katastrophen-Menü (makeFire im Original): 40 Versuche, beliebiges brennbares Feld außer Zonenmitten. */
   makeFire() {
-    for (let t = 0; t < 60; t++) {
+    for (let t = 0; t < 40; t++) {
       const x = rand(W - 1), y = rand(H - 1);
       const k = this.tile[idx(x, y)];
+      if (!isBurnK(k)) continue;
       if (k === T.ZONE) {
         const z = this.zoneAt(x, y);
-        if (z.type === Z.RES && z.den === 0 && !z.special && this.housesCount(z) === 0) continue;
+        if (!z || (x === zoneCX(z) && y === zoneCY(z))) continue;
         this.burnZone(z, x, y);
-        this.message('Feuer gemeldet!', x, y, true);
-        return true;
-      }
-      if (k === T.TREES && t > 40) {
-        this.setTile(x, y, T.FIRE, 0);
-        this.message('Feuer gemeldet!', x, y, true);
-        return true;
-      }
+      } else this.setTile(x, y, T.FIRE, rand(3));
+      this.message('Feuer gemeldet!', x, y, true);
+      return true;
     }
     return false;
   },
@@ -382,6 +399,9 @@ Object.assign(City.prototype, {
     this.message('Tornado gesichtet!', x, y, true);
   },
 
+  /** Erdbeben wie im Original: strength Zufallsfelder; getroffen werden nur Gebäudefelder von Zonen
+   *  (nicht die Mitte), 3 von 4 werden zu Trümmern, jedes 4. fängt Feuer. Vereinfachung im Zonenmodell:
+   *  „Trümmer“ = das Gebäude verliert eine Dichtestufe, „Feuer“ = die Zone brennt ab. */
   makeEarthquake() {
     const strength = 300 + rand(700);
     this.shake = 90;
@@ -389,16 +409,22 @@ Object.assign(City.prototype, {
     this.message('Schweres Erdbeben gemeldet!', this.cityCenterX, this.cityCenterY, true);
     for (let n = 0; n < strength; n++) {
       const x = rand(W - 1), y = rand(H - 1);
-      const k = this.tile[idx(x, y)];
-      if (k === T.ZONE) {
-        if ((rand16() & 3) !== 0) continue;
-        const z = this.zoneAt(x, y);
-        if ((rand16() & 1) === 0) this.burnZone(z, x, y);
-        else this.removeZone(z, T.RUBBLE);
-      } else if (isRoadK(k) || isRailK(k) || isWireK(k)) {
-        if ((rand16() & 1) === 0) this.destroyTile(x, y);
-      }
+      if (this.tile[idx(x, y)] !== T.ZONE) continue;
+      const z = this.zoneAt(x, y);
+      if (!z || (x === zoneCX(z) && y === zoneCY(z))) continue;
+      if ((n & 3) === 0) this.burnZone(z, x, y);
+      else this.quakeDamage(z);
     }
+  },
+
+  /** Ein Gebäude stürzt teilweise ein: eine Ausbaustufe weniger. */
+  quakeDamage(z) {
+    const v = z.val || 0;
+    if (z.type === Z.RES) {
+      if (z.special) return;
+      if (z.den > 0 || this.housesCount(z) > 0) this.doResOut(z, this.resZonePop(z), v);
+    } else if (z.type === Z.COM) this.doComOut(z, z.den, v);
+    else if (z.type === Z.IND) this.doIndOut(z, z.den, v);
   },
 
   makeMonster() {
@@ -434,27 +460,31 @@ Object.assign(City.prototype, {
     return false;
   },
 
+  /** Kernschmelze wie im Original: 4 Explosionen an den Ecken, das Kraftwerk brennt (4x4),
+   *  200 Zufallsfelder im Umkreis von 20x15 werden radioaktiv (brennbare Felder und freier Boden, keine Zonen). */
   doMeltdown(z) {
     const cx = zoneCX(z), cy = zoneCY(z);
     this.removeZone(z, T.RUBBLE);
-    this.makeExplosionAt(cx, cy);
-    for (let y = z.y - 1; y <= z.y + 4; y++) for (let x = z.x - 1; x <= z.x + 4; x++) this.startFire(x, y);
+    for (let y = z.y; y < z.y + 4; y++) for (let x = z.x; x < z.x + 4; x++) this.setTile(x, y, T.FIRE, rand(3));
+    this.makeExplosionAt(z.x, z.y); this.makeExplosionAt(z.x + 3, z.y);
+    this.makeExplosionAt(z.x, z.y + 3); this.makeExplosionAt(z.x + 3, z.y + 3);
     for (let n = 0; n < 200; n++) {
       const x = cx - 20 + rand(40), y = cy - 15 + rand(30);
       if (!inBounds(x, y)) continue;
       const k = this.tile[idx(x, y)];
       if (k === T.ZONE) continue;
-      if (isBurnK(k) || k === T.DIRT || k === T.RUBBLE || isRoadK(k) && k !== T.ROADBRIDGE) this.setTile(x, y, T.RAD, 0);
+      if (isBurnK(k) || k === T.DIRT) this.setTile(x, y, T.RAD, 0);
     }
     this.message('Kernschmelze im Atomkraftwerk!!!', cx, cy, true);
   },
 
+  /** Brandbomben (Hamburg) wie im Original: 2–3 Einzelexplosionen an zufälligen Stellen der Karte. */
   makeFireBombs() {
-    const n = 2 + (rand16() & 1) + rand(3);
+    const n = 2 + (rand16() & 1);
     let lx = 0, ly = 0;
     for (let i = 0; i < n; i++) {
-      lx = 10 + rand(W - 20); ly = 10 + rand(H - 20);
-      for (let j = 0; j < 4; j++) this.makeExplosionAt(lx + rand(6) - 3, ly + rand(6) - 3);
+      lx = rand(W - 1); ly = rand(H - 1);
+      this.makeExplosionAt(lx, ly);
     }
     this.message('Brandbomben gemeldet!', lx, ly, true);
   },
