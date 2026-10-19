@@ -188,8 +188,9 @@ const UI = {
         ['Auto-Gehe-zu', () => { c.autoGoto = !c.autoGoto; }, null, () => c.autoGoto],
         ['Ton', () => { c.soundOn = !c.soundOn; Sound.enabled = c.soundOn; }, null, () => c.soundOn],
         ['-'],
-        ['Vergrößern', () => this.view.setZoom(this.view.zoom + 1), '+'],
-        ['Verkleinern', () => this.view.setZoom(this.view.zoom - 1), '−'],
+        ['Vergrößern', () => this.view.zoomBy(1.25), '+'],
+        ['Verkleinern', () => this.view.zoomBy(0.8), '−'],
+        ['Zoom 100 %', () => this.view.zoomTo(1)],
       ]],
       ['Katastrophen', [
         ['Feuer', dis(() => c.makeFire())],
@@ -375,7 +376,7 @@ const UI = {
         mode: 'pinch',
         mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2,
         dist: Math.max(10, Math.hypot(a[0] - b[0], a[1] - b[1])),
-        cx: v.camX, cy: v.camY,
+        cx: v.camX, cy: v.camY, z0: v.zoom,
       };
       this.hideTip();
       v.cursor = null;
@@ -442,16 +443,13 @@ const UI = {
         const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
         const dist = Math.max(10, Math.hypot(a[0] - b[0], a[1] - b[1]));
         const ratio = dist / drag.dist;
-        // Zoomstufen sind ganzzahlig: bei deutlicher Änderung eine Stufe wechseln
-        const z0 = v.zoom;
-        if (ratio > 1.3) v.setZoom(v.zoom + 1, mx, my);
-        else if (ratio < 0.77) v.setZoom(v.zoom - 1, mx, my);
-        if (v.zoom !== z0 || ratio > 1.3 || ratio < 0.77) {
-          drag.dist = dist; drag.mx = mx; drag.my = my; drag.cx = v.camX; drag.cy = v.camY;
-          return;
-        }
-        v.camX = drag.cx - (mx - drag.mx) / v.ts;
-        v.camY = drag.cy - (my - drag.my) / v.ts;
+        // stufenlos: Kartenpunkt unter der Fingermitte bleibt unter den Fingern
+        const ts0 = TS * drag.z0;
+        const wx = drag.cx + (drag.mx - v.canvas.width / 2) / ts0, wy = drag.cy + (drag.my - v.canvas.height / 2) / ts0;
+        v.zoomAnim = null;
+        v.zoom = clamp(drag.z0 * ratio, ZOOM_MIN, ZOOM_MAX);
+        v.camX = wx - (mx - v.canvas.width / 2) / v.ts;
+        v.camY = wy - (my - v.canvas.height / 2) / v.ts;
         v.clampCam();
         return;
       }
@@ -521,8 +519,12 @@ const UI = {
     cv.addEventListener('wheel', e => {
       e.preventDefault();
       const [sx, sy] = pos(e);
-      if (e.ctrlKey && Math.abs(e.deltaY) < 4) return;   // feines Trackpad-Pinch nicht übersteuern
-      v.setZoom(v.zoom + (e.deltaY < 0 ? 1 : -1), sx, sy);
+      // stufenlos: Mausrad und Trackpad-Pinch (ctrlKey) skalieren fließend
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 40; else if (e.deltaMode === 2) dy *= 400;
+      const k = e.ctrlKey ? 0.012 : 0.0022;
+      v.zoomAnim = null;
+      v.setZoom(v.zoom * Math.exp(-clamp(dy, -300, 300) * k), sx, sy);
     }, { passive: false });
     // iOS: Gesten-Zoom der Seite unterbinden
     for (const t of ['gesturestart', 'gesturechange']) cv.addEventListener(t, e => e.preventDefault());
@@ -622,8 +624,8 @@ const UI = {
         case 'ArrowRight': v.camX += step; v.clampCam(); e.preventDefault(); return;
         case 'ArrowUp': v.camY -= step; v.clampCam(); e.preventDefault(); return;
         case 'ArrowDown': v.camY += step; v.clampCam(); e.preventDefault(); return;
-        case '+': case '=': v.setZoom(v.zoom + 1); return;
-        case '-': v.setZoom(v.zoom - 1); return;
+        case '+': case '=': v.zoomBy(1.25); return;
+        case '-': v.zoomBy(0.8); return;
         case ' ': e.preventDefault(); this.setSpeed(this.city.speed === 0 ? (this.lastSpeed || 2) : (this.lastSpeed = this.city.speed, 0)); return;
         case 'Escape': this.closeTopWindow(); return;
         case 'M': case 'm': this.toggleWin('map', () => this.openMap()); return;

@@ -59,7 +59,7 @@ Ohne Einrichtung läuft alles offline; Auto-Speichern funktioniert dann lokal im
 |---|---|
 | Bauen | Linksklick, Linien (Straße, Schiene, Leitung, Bulldozer, Park) durch Ziehen |
 | Karte verschieben | Rechts-/Mittelklick + Ziehen, Pfeiltasten, Hand-Werkzeug, Klick in die Übersichtskarte |
-| Zoomen | Mausrad, `+` / `−` |
+| Zoomen | stufenlos 50–400 %: Mausrad, Trackpad- oder Finger-Pinch, `+` / `−`; Optionen → Zoom 100 % |
 | Minikarte | unten rechts immer sichtbar, Klick/Ziehen springt dorthin; `K` verkleinert/vergrößert |
 | Pause | Leertaste |
 | Fenster | `M` Karte, `G` Grafiken, `B` Haushalt, `E` Bewertung, `Esc` schließt |

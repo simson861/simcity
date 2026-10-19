@@ -6,12 +6,15 @@ const NB8X = [0, 1, 0, -1, 1, 1, -1, -1], NB8Y = [-1, 0, 1, 0, -1, 1, 1, -1];
 // Kurvenmittelpunkte (Feldpixel) je Straßenmaske, passend zu GFX.drawRoadArms
 const ROAD_CURVE = { 3: [16, 0], 6: [16, 16], 12: [0, 16], 9: [0, 0] };
 
+const ZOOM_MIN = 0.5, ZOOM_MAX = 4;
+
 class View {
   constructor(canvas, city) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.city = city;
-    this.zoom = 2;                  // 1, 2 oder 3 (Pixel pro Kachelpixel)
+    this.zoom = 2;                  // stufenlos 0,5 … 4 (Bildschirmpixel pro Kachelpixel)
+    this.zoomAnim = null;           // laufende Zoom-Animation {target, sx, sy}
     this.camX = W / 2; this.camY = H / 2;   // Kamera-Mittelpunkt in Feldern
     this.cursor = null;             // {x, y, size, ok, line}
     this.frame = 0;
@@ -49,8 +52,8 @@ class View {
   }
 
   setZoom(z, sx, sy) {
-    z = clamp(z, 1, 3);
-    if (z === this.zoom) return;
+    z = clamp(z, ZOOM_MIN, ZOOM_MAX);
+    if (Math.abs(z - this.zoom) < 1e-4) return;
     let before = null;
     if (sx !== undefined) before = this.screenToTile(sx, sy);
     this.zoom = z;
@@ -60,6 +63,21 @@ class View {
       this.camY += before[3] - after[3];
     }
     this.clampCam();
+  }
+
+  /** Weich zu einer Zoomstufe gleiten (Tasten, Menü). */
+  zoomTo(target, sx, sy) {
+    const cw = this.canvas.width, ch = this.canvas.height;
+    this.zoomAnim = { target: clamp(target, ZOOM_MIN, ZOOM_MAX), sx: sx === undefined ? cw / 2 : sx, sy: sy === undefined ? ch / 2 : sy };
+  }
+  zoomBy(factor, sx, sy) { this.zoomTo((this.zoomAnim ? this.zoomAnim.target : this.zoom) * factor, sx, sy); }
+
+  stepZoomAnim() {
+    const a = this.zoomAnim;
+    if (!a) return;
+    const z = this.zoom + (a.target - this.zoom) * 0.3;
+    if (Math.abs(a.target - z) < 0.004) { this.setZoom(a.target, a.sx, a.sy); this.zoomAnim = null; }
+    else this.setZoom(z, a.sx, a.sy);
   }
 
   // ---------------- Kacheln ----------------
@@ -115,6 +133,7 @@ class View {
     const ctx = this.ctx, c = this.city;
     const ts = this.ts;
     const cw = this.canvas.width, ch = this.canvas.height;
+    this.stepZoomAnim();
     const animFrame = paused ? this.lastAnim || 0 : Math.floor(time / 250);
     this.lastAnim = animFrame;
     this.frame++;
@@ -123,7 +142,10 @@ class View {
     const offX = Math.round(cw / 2 - this.camX * ts + shx);
     const offY = Math.round(ch / 2 - this.camY * ts + shy);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cw, ch);
-    ctx.imageSmoothingEnabled = false;
+    // Unter 100 % weich verkleinern (sonst flimmern die Pixel), darüber scharfe Pixelgrafik
+    ctx.imageSmoothingEnabled = this.zoom < 1;
+    // Kachelkanten auf ganze Pixel runden: keine Lücken bei krummen Zoomstufen
+    const PX = v => Math.round(v);
 
     const x0 = Math.max(0, Math.floor(-offX / ts) - 1), y0 = Math.max(0, Math.floor(-offY / ts) - 1);
     const x1 = Math.min(W - 1, Math.ceil((cw - offX) / ts)), y1 = Math.min(H - 1, Math.ceil((ch - offY) / ts));
@@ -136,7 +158,8 @@ class View {
       for (let x = x0; x <= x1; x++) {
         const i = idx(x, y);
         const k = c.tile[i];
-        const sx = offX + x * ts, sy = offY + y * ts;
+        const sx = PX(offX + x * ts), sy = PX(offY + y * ts);
+        const tw = PX(offX + (x + 1) * ts) - sx, th = PX(offY + (y + 1) * ts) - sy;
         if (k === T.ZONE) {
           const id = c.zid[i];
           if (drawn.has(id)) continue;
@@ -145,19 +168,21 @@ class View {
           if (!z) continue;
           const orig = GFX.zoneImage(z);
           const img = Seasons.apply(orig, season);
-          ctx.drawImage(img, offX + z.x * ts, offY + z.y * ts, z.size * ts, z.size * ts);
+          const zx = PX(offX + z.x * ts), zy = PX(offY + z.y * ts);
+          ctx.drawImage(img, zx, zy, PX(offX + (z.x + z.size) * ts) - zx, PX(offY + (z.y + z.size) * ts) - zy);
           // R/C/I-Markierung leerer Zonen behält in jeder Jahreszeit ihre Farbe
           if (img !== orig && z.type <= Z.IND && z.den === 0 && !z.special) {
-            ctx.drawImage(orig, TS, TS, TS, TS, offX + (z.x + 1) * ts, offY + (z.y + 1) * ts, ts, ts);
+            const lx = PX(offX + (z.x + 1) * ts), ly = PX(offY + (z.y + 1) * ts);
+            ctx.drawImage(orig, TS, TS, TS, TS, lx, ly, PX(offX + (z.x + 2) * ts) - lx, PX(offY + (z.y + 2) * ts) - ly);
           }
           zonesVisible.push(z);
           continue;
         }
-        ctx.drawImage(Seasons.apply(this.tileImage(x, y, animFrame), season), sx, sy, ts, ts);
+        ctx.drawImage(Seasons.apply(this.tileImage(x, y, animFrame), season), sx, sy, tw, th);
         if ((k === T.ROAD || k === T.ROADBRIDGE) && c.vari[i]) {
           const lvl = roadLevel(c, i);
           const m = k === T.ROAD ? c.roadMask(x, y) : (this.bridgeOrient(x, y, isRoadK) ? 5 : 10);
-          ctx.drawImage(GFX.roadUpgrade(m, lvl, k === T.ROADBRIDGE), sx, sy, ts, ts);
+          ctx.drawImage(GFX.roadUpgrade(m, lvl, k === T.ROADBRIDGE), sx, sy, tw, th);
         }
         if (isRoadK(k) && k !== T.ROADBRIDGE || k === T.ROADBRIDGE) this.drawTraffic(ctx, x, y, sx, sy, time, paused);
       }
