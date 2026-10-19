@@ -198,3 +198,16 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
 
 #st-online { cursor: pointer; color: #404040; }
 #st-online.on { color: #006000; font-weight: bold; }
+
+/* ---------- Minikarte (immer sichtbar, unten rechts im Stadtfenster) ---------- */
+#minimap {
+  position: absolute; right: calc(8px + env(safe-area-inset-right, 0px)); bottom: 8px; z-index: 50;
+  border: 2px outset #fff; background: #c0c0c0; padding: 2px; box-shadow: 2px 2px 0 rgba(0,0,0,0.6);
+}
+#minimap-cv { display: block; width: 180px; height: 150px; image-rendering: pixelated; cursor: pointer; touch-action: none; }
+#minimap-toggle {
+  position: absolute; top: -2px; left: -2px; width: 18px; height: 16px; padding: 0; font: bold 11px/10px Arial;
+  border: 2px outset #fff; background: #c0c0c0; cursor: pointer;
+}
+#minimap.collapsed #minimap-cv { width: 60px; height: 50px; opacity: 0.85; }
+@media (max-width: 640px) { #minimap-cv { width: 120px; height: 100px; } }

@@ -65,6 +65,7 @@ const UI = {
       else this.openLog();
     });
     document.getElementById('st-rci').addEventListener('click', () => this.demandInfo());
+    this.initMinimap();
     document.getElementById('fileinput').addEventListener('change', e => this.importFile(e));
     const onResize = () => { this.view.resize(); this.closeMenus(); this.fitWindows(); };
     window.addEventListener('resize', onResize);
@@ -80,6 +81,61 @@ const UI = {
         e.preventDefault(); e.stopPropagation();
       }
     }, true);
+  },
+
+  // =================== Minikarte ===================
+  initMinimap() {
+    const box = document.getElementById('minimap');
+    const cv = document.getElementById('minimap-cv');
+    if (!box || !cv) return;
+    this.miniImg = mkCanvas(W, H);
+    const collapsed = this.lsGet('simcity89-minimap') === 'klein';
+    box.classList.toggle('collapsed', collapsed);
+    const tg = document.getElementById('minimap-toggle');
+    const setLabel = () => { tg.textContent = box.classList.contains('collapsed') ? '+' : '–'; };
+    setLabel();
+    this.toggleMinimap = () => {
+      box.classList.toggle('collapsed');
+      setLabel();
+      try { this.lsSet('simcity89-minimap', box.classList.contains('collapsed') ? 'klein' : 'gross'); } catch (e) { /* egal */ }
+    };
+    tg.addEventListener('click', e => { e.stopPropagation(); this.toggleMinimap(); });
+    let drag = false;
+    const go = e => {
+      const r = cv.getBoundingClientRect();
+      this.view.camX = clamp((e.clientX - r.left) / r.width, 0, 1) * W;
+      this.view.camY = clamp((e.clientY - r.top) / r.height, 0, 1) * H;
+      this.view.clampCam();
+    };
+    cv.addEventListener('pointerdown', e => { e.stopPropagation(); drag = true; cv.setPointerCapture(e.pointerId); go(e); });
+    cv.addEventListener('pointermove', e => { if (drag) go(e); });
+    const end = () => { drag = false; };
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    this.tickHooks.push(now => this.drawMinimap(now));
+  },
+
+  drawMinimap(now) {
+    const cv = document.getElementById('minimap-cv');
+    if (!cv || !this.miniImg) return;
+    const c = this.city;
+    if (this.miniVersion !== c.mapVersion && now - (this.miniAt || 0) > 500 || !this.miniAt) {
+      MapRender.draw(this.miniImg.getContext('2d'), c, 'all', 1);
+      this.miniVersion = c.mapVersion;
+      this.miniAt = now;
+    }
+    // Maßstab 2 für scharfen Sichtrahmen
+    if (cv.width !== W * 2) { cv.width = W * 2; cv.height = H * 2; }
+    const g = cv.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(this.miniImg, 0, 0, W * 2, H * 2);
+    const v = this.view;
+    const vw = v.canvas.width / v.ts, vh = v.canvas.height / v.ts;
+    const x = Math.round((v.camX - vw / 2) * 2), y = Math.round((v.camY - vh / 2) * 2);
+    const w = Math.round(vw * 2), h = Math.round(vh * 2);
+    g.lineWidth = 2;
+    g.strokeStyle = '#000'; g.strokeRect(x + 1, y + 1, w, h);
+    g.strokeStyle = '#ffff40'; g.strokeRect(x, y, w, h);
   },
 
   /** Ist localStorage nutzbar? (In Sandbox-iframes oder bei blockierten Cookies nicht.) */
@@ -564,6 +620,7 @@ const UI = {
         case ' ': e.preventDefault(); this.setSpeed(this.city.speed === 0 ? (this.lastSpeed || 2) : (this.lastSpeed = this.city.speed, 0)); return;
         case 'Escape': this.closeTopWindow(); return;
         case 'M': case 'm': this.toggleWin('map', () => this.openMap()); return;
+        case 'K': case 'k': if (this.toggleMinimap) this.toggleMinimap(); return;
         case 'G': case 'g': this.toggleWin('graphs', () => this.openGraphs()); return;
         case 'B': this.toggleWin('budget', () => this.openBudget(false)); return;
         case 'E': case 'e': this.toggleWin('eval', () => this.openEvaluation()); return;

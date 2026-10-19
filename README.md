@@ -54,6 +54,7 @@ Ohne Einrichtung läuft alles offline; Auto-Speichern funktioniert dann lokal im
 | Bauen | Linksklick, Linien (Straße, Schiene, Leitung, Bulldozer, Park) durch Ziehen |
 | Karte verschieben | Rechts-/Mittelklick + Ziehen, Pfeiltasten, Hand-Werkzeug, Klick in die Übersichtskarte |
 | Zoomen | Mausrad, `+` / `−` |
+| Minikarte | unten rechts immer sichtbar, Klick/Ziehen springt dorthin; `K` verkleinert/vergrößert |
 | Pause | Leertaste |
 | Fenster | `M` Karte, `G` Grafiken, `B` Haushalt, `E` Bewertung, `Esc` schließt |
 | Werkzeuge | `B` Bulldozer, `Q` Abfrage, `R` Straße, `T` Schiene, `L` Leitung, `P` Park, `1`–`0` Zonen/Gebäude |

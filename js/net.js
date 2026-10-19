@@ -26,6 +26,8 @@ const Net = {
         databaseURL: 'http://127.0.0.1:' + dbPort + '/?ns=demo-simcity' };
     }
     if (!cfg || typeof firebase === 'undefined') { this.updateIndicator(); return; }
+    // Als lokale Datei (file://) ist keine Google-Anmeldung möglich → offline bleiben
+    if (location.protocol === 'file:' && !this.emulator) { this.updateIndicator(); return; }
     // Häufiger Tippfehler beim Eintragen: „Key“ statt „apiKey“
     if (!cfg.apiKey && cfg.Key) cfg = Object.assign({ apiKey: cfg.Key }, cfg);
     try {
@@ -44,7 +46,9 @@ const Net = {
       return;
     }
     // Rückkehr von einer Weiterleitungs-Anmeldung (Handy, blockierte Popups)
-    this.auth.getRedirectResult().catch(e => this.authError(e));
+    this.auth.getRedirectResult().catch(e => {
+      if (e && e.code !== 'auth/operation-not-supported-in-this-environment') this.authError(e);
+    });
     this.auth.onAuthStateChanged(u => {
       this.user = u;
       if (u) {
