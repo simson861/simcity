@@ -49,6 +49,7 @@ const UI = {
   startButtons: [],      // [{ label, fn, show() }] zusätzliche Knöpfe im Startbildschirm
   toolHooks: [],         // fn(tool, x, y, drag) → true = Werkzeug wurde abgefangen
   tickHooks: [],         // fn(now) in jedem Bild
+  actionGuards: [],      // fn(aktion) → true = Aktion blockiert ('speed', 'disaster', 'budget', 'newcity', 'load', 'rename', 'cheat')
   suppressClickUntil: 0, // verhindert "Durchklicken" nach Menüauswahl per Touch
 
   init(city, view) {
@@ -96,6 +97,12 @@ const UI = {
   lsSet(k, v) { window.localStorage.setItem(k, v); },   // wirft bei Fehler – Aufrufer fängt ab
   lsDel(k) { try { window.localStorage.removeItem(k); } catch (e) { /* egal */ } },
 
+  /** Darf die Aktion ausgeführt werden? (z. B. nur der Gastgeber im Multiplayer) – true = blockiert. */
+  guard(action) {
+    for (const g of this.actionGuards) if (g(action)) return true;
+    return false;
+  },
+
   get paused() { return this.city.speed === 0 || this.modal > 0; },
 
   // =================== Menüs ===================
@@ -103,6 +110,7 @@ const UI = {
     const mb = document.getElementById('menubar');
     mb.innerHTML = '';
     const c = this.city;
+    const dis = fn => () => { if (!this.guard('disaster')) fn(); };
     const menus = [
       ['Datei', [
         ['Neue Stadt…', () => this.startScreen()],
@@ -127,15 +135,15 @@ const UI = {
         ['Verkleinern', () => this.view.setZoom(this.view.zoom - 1), '−'],
       ]],
       ['Katastrophen', [
-        ['Feuer', () => c.makeFire()],
-        ['Überschwemmung', () => c.makeFlood()],
-        ['Flugzeugabsturz', () => c.makeAirCrash()],
-        ['Tornado', () => c.makeTornado()],
-        ['Erdbeben', () => c.makeEarthquake()],
-        ['Monster', () => c.makeMonster()],
-        ['Kernschmelze', () => { if (!c.makeMeltdown()) this.status('Kein Atomkraftwerk vorhanden.'); }],
+        ['Feuer', dis(() => c.makeFire())],
+        ['Überschwemmung', dis(() => c.makeFlood())],
+        ['Flugzeugabsturz', dis(() => c.makeAirCrash())],
+        ['Tornado', dis(() => c.makeTornado())],
+        ['Erdbeben', dis(() => c.makeEarthquake())],
+        ['Monster', dis(() => c.makeMonster())],
+        ['Kernschmelze', dis(() => { if (!c.makeMeltdown()) this.status('Kein Atomkraftwerk vorhanden.'); })],
         ['-'],
-        ['Zufällige Katastrophen', () => { c.disastersEnabled = !c.disastersEnabled; }, null, () => c.disastersEnabled],
+        ['Zufällige Katastrophen', dis(() => { c.disastersEnabled = !c.disastersEnabled; }), null, () => c.disastersEnabled],
       ]],
       ['Fenster', [
         ['Übersichtskarte', () => this.openMap(), 'M'],
@@ -213,7 +221,7 @@ const UI = {
     if (over > 0) list.style.left = -Math.min(over, r.left) + 'px';
   },
 
-  setSpeed(s) { this.city.speed = s; this.updateStatus(); },
+  setSpeed(s) { if (this.guard('speed')) return; this.city.speed = s; this.updateStatus(); },
 
   /** Menüeinträge eines Moduls ergänzen (Menü wird neu aufgebaut). */
   addMenuItems(title, items) {
@@ -534,7 +542,7 @@ const UI = {
       if (document.getElementById('start-bg')) return;   // Startbildschirm: keine Spieltasten
       // Cheat: FUND
       this.cheatBuf = (this.cheatBuf + k.toUpperCase()).slice(-4);
-      if (this.cheatBuf === 'FUND') {
+      if (this.cheatBuf === 'FUND' && !this.guard('cheat')) {
         this.city.funds += 10000;
         this.city.emit('funds');
         Sound.cash();
@@ -981,6 +989,7 @@ const UI = {
   openBudget(yearEnd) {
     const c = this.city;
     if (this.wins.budget) { this.focusWin(this.wins.budget); return; }
+    if (!yearEnd && this.guard('budget')) return;
     if (!yearEnd) c.computeBudgetRequests();
     const body = document.createElement('div');
     body.style.width = 'min(400px, calc(100vw - 24px))';
@@ -1229,6 +1238,7 @@ const UI = {
 
   // =================== Startbildschirm / Neue Stadt ===================
   startScreen() {
+    if (this.guard('newcity')) return;
     for (const id in this.wins) this.closeWin(id);
     const bg = document.createElement('div');
     bg.id = 'start-bg';
@@ -1320,6 +1330,7 @@ const UI = {
   },
 
   scenarioDialog(fromStart) {
+    if (this.guard('load')) return;
     const body = document.createElement('div');
     body.style.width = 'min(460px, calc(100vw - 24px))';
     body.innerHTML = `<p>Wähle ein Szenario. Jede Stadt steckt in einer Krise – löse sie innerhalb der Frist!</p>
@@ -1406,6 +1417,7 @@ const UI = {
   },
 
   loadDialog(fromStart) {
+    if (this.guard('load')) return;
     const ok = this.storageOK();
     const saves = ok ? this.savesIndex() : [];
     const body = document.createElement('div');
@@ -1440,6 +1452,7 @@ const UI = {
   },
 
   loadObject(o) {
+    if (this.guard('load')) return;
     const c = this.city;
     const listeners = c.listeners;
     c.deserialize(o);
@@ -1521,6 +1534,7 @@ const UI = {
   importFile(e) {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    if (this.guard('load')) { e.target.value = ''; return; }
     const r = new FileReader();
     r.onload = () => {
       try {
@@ -1534,6 +1548,7 @@ const UI = {
   },
 
   renameCity() {
+    if (this.guard('rename')) return;
     this.ask('Stadt umbenennen', 'Neuer Name der Stadt:', this.city.name, n => { this.city.name = n; this.updateStatus(); }, 24);
   },
 

@@ -33,6 +33,20 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 - **Speichern/Laden** im Browser (localStorage) oder als Datei (Export/Import)
 - Meldungen und Meilensteine (Kleinstadt, Stadt, Hauptstadt, Metropole, Megalopolis), Cheat „FUND“
 
+## Online-Funktionen
+
+Mit einem (kostenlosen) Firebase-Projekt kommen dazu – Einrichtung siehe [ONLINE-EINRICHTUNG.md](ONLINE-EINRICHTUNG.md):
+
+- **Anmeldung mit Google** (Menü „Online“ bzw. Feld in der Statusleiste)
+- **Auto-Speichern** alle 60 Sekunden und beim Schließen (lokal, angemeldet zusätzlich in der Cloud); „Weiterspielen“ im Startbildschirm
+- **Cloud-Spielstände** – auf jedem Gerät verfügbar
+- **Region & Bestenliste** – eigene Stadt veröffentlichen, Städte anderer Spieler ansehen (nur lesend)
+- **Gemeinsame Stadt** – mehrere Spieler bauen gleichzeitig an einer Stadt mit gemeinsamer Kasse;
+  Räume über Lobby oder 6-stelligen Code, Mauszeiger der Mitspieler, Chat (Taste C). Der Gastgeber
+  rechnet die Simulation und steuert Tempo, Haushalt und Katastrophen.
+
+Ohne Einrichtung läuft alles offline; Auto-Speichern funktioniert dann lokal im Browser.
+
 ## Bedienung
 
 | Aktion | Eingabe |
@@ -62,5 +76,10 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 | `js/gfx.js` | Prozedurale Pixelgrafik für Felder und Gebäude |
 | `js/view.js` | Darstellung von Stadt und Übersichtskarte |
 | `js/ui.js` | Menüs, Fenster, Dialoge |
+| `js/net.js` | Firebase-Anbindung, Google-Anmeldung |
+| `js/cloud.js` | Auto-Speichern, Cloud-Spielstände, Region |
+| `js/coop.js` | Gemeinsame Stadt (Multiplayer) |
+| `js/firebase-config.js` | Firebase-Projektdaten (leer = offline) |
+| `firebase/` | Datenbankregeln, Emulator-Konfiguration |
 | `js/sound.js` | Klangeffekte (WebAudio) |
 | `js/main.js` | Start und Hauptschleife |

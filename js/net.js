@@ -17,10 +17,13 @@ const Net = {
   init() {
     const params = new URLSearchParams(location.search);
     this.emulator = params.has('emulator');
+    // ?emulator oder ?emulator=AUTHPORT,DBPORT (Standard 9099,9000)
+    const ports = /^(\d+),(\d+)$/.exec(params.get('emulator') || '');
+    const authPort = ports ? ports[1] : '9099', dbPort = ports ? +ports[2] : 9000;
     let cfg = typeof FIREBASE_CONFIG !== 'undefined' ? FIREBASE_CONFIG : null;
     if (this.emulator) {
       cfg = { apiKey: 'demo-key', authDomain: 'demo-simcity.firebaseapp.com', projectId: 'demo-simcity',
-        databaseURL: 'http://127.0.0.1:9000/?ns=demo-simcity' };
+        databaseURL: 'http://127.0.0.1:' + dbPort + '/?ns=demo-simcity' };
     }
     if (!cfg || typeof firebase === 'undefined') { this.updateIndicator(); return; }
     try {
@@ -28,8 +31,8 @@ const Net = {
       this.auth = firebase.auth();
       this.db = firebase.database();
       if (this.emulator) {
-        this.auth.useEmulator('http://127.0.0.1:9099', { disableWarnings: true });
-        this.db.useEmulator('127.0.0.1', 9000);
+        this.auth.useEmulator('http://127.0.0.1:' + authPort, { disableWarnings: true });
+        this.db.useEmulator('127.0.0.1', dbPort);
       }
       this.available = true;
     } catch (e) {
