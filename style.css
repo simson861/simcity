@@ -195,3 +195,6 @@ input, textarea, select { -webkit-user-select: text; user-select: text; }
   .mapside { flex-direction: row; flex-wrap: wrap; gap: 0; }
   .mapside label, .mapside #map-legend { width: 100%; }
 }
+
+#st-online { cursor: pointer; color: #404040; }
+#st-online.on { color: #006000; font-weight: bold; }

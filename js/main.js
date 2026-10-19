@@ -7,6 +7,15 @@
   city.fullAnalysis();
   const view = new View(document.getElementById('map'), city);
   UI.init(city, view);
+  Net.init();
+  if (typeof Cloud !== 'undefined') Cloud.init(city, view);
+  if (typeof Coop !== 'undefined') Coop.init(city, view);
+  UI.buildMenus();
+  Net.on(t => { if (t === 'auth') UI.buildMenus(); });
+  document.getElementById('st-online').addEventListener('click', () => {
+    if (!Net.user) Net.signIn();
+    else UI.confirm('Abmelden', `<p>Angemeldet als <b>${Net.name}</b>. Abmelden?</p>`, 'Abmelden', () => Net.signOut());
+  });
   view.centerOn(W / 2, H / 2);
   UI.updateStatus();
   UI.startScreen();
@@ -28,7 +37,8 @@
     let dt = now - last;
     last = now;
     if (dt > 250) dt = 250;
-    if (!UI.paused) {
+    // city.remote: Stadt wird von außen gesteuert (Mitspieler im Multiplayer, Stadtbesuch) – keine eigene Simulation
+    if (!UI.paused && !city.remote) {
       const phaseMs = CYCLE_MS[city.speed] / 16;
       acc += dt;
       let n = 0;
@@ -42,6 +52,7 @@
     uiAcc += dt;
     if (uiAcc > 200) { uiAcc = 0; UI.updateStatus(); UI.drawRCI(); }
     if (UI.mapCanvas) UI.drawMapWin(false);
+    for (const h of UI.tickHooks) h(now);
   }
   requestAnimationFrame(loop);
 })();

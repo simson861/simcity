@@ -27,11 +27,16 @@
     <span id="st-pop" class="st"></span>
     <span id="st-speed" class="st"></span>
     <span id="st-rci" class="st" title="Nachfrage"></span>
+    <span id="st-online" class="st" hidden></span>
     <span id="st-msg" class="st msg" title="Klicken, um zum Ort der Meldung zu springen"></span>
   </div>
   <div id="windows"></div>
 </div>
 <input type="file" id="fileinput" accept=".json,.city,application/json" style="display:none">
+<script src="js/vendor/firebase-app-compat.js"></script>
+<script src="js/vendor/firebase-auth-compat.js"></script>
+<script src="js/vendor/firebase-database-compat.js"></script>
+<script src="js/firebase-config.js"></script>
 <script src="js/core.js"></script>
 <script src="js/mapgen.js"></script>
 <script src="js/sim.js"></script>
@@ -40,7 +45,10 @@
 <script src="js/gfx.js"></script>
 <script src="js/view.js"></script>
 <script src="js/sound.js"></script>
+<script src="js/net.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/cloud.js"></script>
+<script src="js/coop.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

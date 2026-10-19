@@ -161,6 +161,9 @@ class View {
     // Objekte
     this.drawSprites(ctx, offX, offY, time);
 
+    // Zusätzliche Ebenen (z. B. Mauszeiger anderer Spieler im Multiplayer)
+    if (this.afterDraw) this.afterDraw(ctx, offX, offY, ts, time);
+
     // Cursor
     if (this.cursor) {
       const cu = this.cursor;

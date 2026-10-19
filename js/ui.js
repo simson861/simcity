@@ -44,6 +44,11 @@ const UI = {
   lastMsg: null,
   cheatBuf: '',
   msgLog: [],            // Meldungsverlauf (neueste zuerst)
+  // Erweiterungspunkte für Online-Module (cloud.js, coop.js)
+  menuExt: {},           // { Menütitel: [[Text, fn, Taste, checkedFn], …] }
+  startButtons: [],      // [{ label, fn, show() }] zusätzliche Knöpfe im Startbildschirm
+  toolHooks: [],         // fn(tool, x, y, drag) → true = Werkzeug wurde abgefangen
+  tickHooks: [],         // fn(now) in jedem Bild
   suppressClickUntil: 0, // verhindert "Durchklicken" nach Menüauswahl per Touch
 
   init(city, view) {
@@ -146,6 +151,15 @@ const UI = {
         ['Schnell', () => this.setSpeed(3), null, () => c.speed === 3],
       ]],
     ];
+    if (typeof Net !== 'undefined' && Net.available) {
+      menus.push(['Online', [
+        [Net.user ? 'Abmelden (' + Net.name + ')' : 'Mit Google anmelden…', () => (Net.user ? Net.signOut() : Net.signIn())],
+      ]]);
+    }
+    for (const [title, items] of menus) {
+      const ext = this.menuExt[title];
+      if (ext && ext.length) items.push(['-'], ...ext);
+    }
     for (const [title, items] of menus) {
       const m = document.createElement('div');
       m.className = 'menu';
@@ -200,6 +214,12 @@ const UI = {
   },
 
   setSpeed(s) { this.city.speed = s; this.updateStatus(); },
+
+  /** Menüeinträge eines Moduls ergänzen (Menü wird neu aufgebaut). */
+  addMenuItems(title, items) {
+    this.menuExt[title] = (this.menuExt[title] || []).concat(items);
+    this.buildMenus();
+  },
 
   // =================== Werkzeuge ===================
   buildTools() {
@@ -439,6 +459,7 @@ const UI = {
 
   applyAt(tool, x, y, drag) {
     if (!inBounds(x, y)) return;
+    for (const h of this.toolHooks) if (h(tool, x, y, drag)) return;
     const c = this.city;
     const r = c.applyTool(tool.id, x, y);
     if (r.ok) {
@@ -1223,6 +1244,7 @@ const UI = {
           <button class="btn" data-a="load">Gespeicherte Stadt laden</button>
           <button class="btn" data-a="import">Stadt aus Datei importieren</button>
           ${this.hasRunningCity ? '<button class="btn" data-a="back">Zurück zur aktuellen Stadt</button>' : ''}
+          ${this.startButtons.map((b, i) => (!b.show || b.show()) ? `<button class="btn" data-ext="${i}">${b.label}</button>` : '').join('')}
         </div>
       </div>`;
     bg.appendChild(box);
@@ -1236,6 +1258,10 @@ const UI = {
       else if (a === 'scen') this.scenarioDialog(true);
       else if (a === 'load') this.loadDialog(true);
       else if (a === 'import') { this.startScreen(); document.getElementById('fileinput').click(); }
+    }));
+    box.querySelectorAll('[data-ext]').forEach(b => b.addEventListener('click', () => {
+      close();
+      this.startButtons[+b.dataset.ext].fn();
     }));
   },
 

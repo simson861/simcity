@@ -1,0 +1,31 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "saveMeta": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "saveData": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "region": {
+      ".read": "auth != null"
+    },
+    "roomList": {
+      ".read": "auth != null"
+    },
+    "rooms": {
+      ".read": false
+    }
+  }
+}
