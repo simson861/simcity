@@ -408,6 +408,57 @@ const GFX = {
     }
   },
 
+  /**
+   * Überlagerung für ausgebaute Straßen (transparent, über tileRoad/tileBridge gezeichnet).
+   * mask: Straßenmaske (bei Brücken 10 = waagrecht, 5 = senkrecht), lvl 1/2, bridge: keine Bäume am Rand.
+   */
+  roadUpgrade(mask, lvl, bridge) {
+    return this.get('rup' + mask + '_' + lvl + (bridge ? 'b' : ''), TS, TS, g => {
+      if (mask === 0) mask = 10;
+      const H = mask === 10 || mask === 2 || mask === 8;
+      const V = mask === 5 || mask === 1 || mask === 4;
+      // Hilfsfunktion: Rechteck in Längsrichtung (a = Position quer zur Fahrtrichtung)
+      const band = (a, w, col, dash) => {
+        g.fillStyle = col;
+        for (let t = 0; t < TS; t += dash ? 4 : TS) {
+          const len = dash ? 2 : TS;
+          if (H) g.fillRect(t, a, len, w); else g.fillRect(a, t, w, len);
+        }
+      };
+      if (H || V) {
+        if (lvl === 1) {
+          // Hauptstraße: durchgezogene doppelte gelbe Mittellinie, Alleebäume am Rand
+          band(4, 8, PAL.asphalt);
+          band(7, 1, '#e8c020'); band(8, 1, '#e8c020');
+          band(5, 1, '#d8d8d0', true); band(10, 1, '#d8d8d0', true);
+          if (!bridge) {
+            for (let t = 2; t < TS; t += 7) for (const a of [1, 14]) {
+              const [x, y] = H ? [t, a] : [a, t];
+              g.fillStyle = '#1d5a22'; g.fillRect(x - 1, y - 1, 3, 3);
+              g.fillStyle = '#3c9a3c'; g.fillRect(x - 1, y - 1, 2, 2);
+            }
+          }
+        } else {
+          // Schnellstraße: volle Breite, Mittelleitplanke, je zwei Spuren, gelbe Randlinien
+          band(1, 14, '#555558');
+          band(1, 1, '#909090'); band(14, 1, '#909090');
+          band(2, 1, '#e8c020'); band(13, 1, '#e8c020');
+          band(4, 1, '#e8e8e8', true); band(11, 1, '#e8e8e8', true);
+          band(7, 2, '#b8b8b8'); band(7, 1, '#e0e0e0');
+        }
+        return;
+      }
+      // Kurven, Einmündungen, Kreuzungen: Asphalt nachdunkeln bzw. Ampel-Markierung
+      for (let y = 0; y < TS; y++) for (let x = 0; x < TS; x++) {
+        if (!this.roadInside(mask, x, y)) continue;
+        if (lvl === 2) { g.fillStyle = 'rgba(0,0,0,0.28)'; g.fillRect(x, y, 1, 1); }
+      }
+      g.fillStyle = lvl === 2 ? '#e8c020' : '#d8d8d0';
+      if (lvl === 1) { g.fillRect(3, 3, 1, 1); g.fillRect(12, 3, 1, 1); g.fillRect(3, 12, 1, 1); g.fillRect(12, 12, 1, 1); }
+      else { for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) if (this.roadInside(mask, x, y)) g.fillRect(x, y, 1, 1); }
+    });
+  },
+
   tileRoad(mask) {
     return this.get('road' + mask, TS, TS, g => { this.dirt(g, 90 + (mask & 3)); this.drawRoadArms(g, mask); });
   },

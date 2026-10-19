@@ -34,6 +34,12 @@ const LEVEL_FUNDS = [20000, 10000, 5000];
 const CLASS_NAMES = ['Dorf', 'Kleinstadt', 'Stadt', 'Hauptstadt', 'Metropole', 'Megalopolis'];
 const MONTHS = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 
+// Straßenausbau: Stufe 0 = Straße, 1 = Hauptstraße, 2 = Schnellstraße (gespeichert in vari von ROAD/ROADBRIDGE)
+const ROAD_LEVEL_NAMES = ['Straße', 'Hauptstraße', 'Schnellstraße'];
+const ROAD_UPGRADE_COST = [40, 80];          // Ausbau auf Stufe 1 bzw. 2 (Brücken ×2,5)
+const ROAD_TRAFFIC_ADD = [50, 30, 18];       // Verkehrslast je Durchfahrt (Original: 50)
+function roadLevel(city, i) { const k = city.tile[i]; return (k === T.ROAD || k === T.ROADBRIDGE) ? Math.min(2, city.vari[i]) : 0; }
+
 const MAX_ROAD_EFFECT = 32, MAX_POLICE_EFFECT = 1000, MAX_FIRE_EFFECT = 1000;
 
 function idx(x, y) { return y * W + x; }
@@ -268,6 +274,7 @@ class City {
       case 'rail': return this.layLine(x, y, 'rail');
       case 'wire': return this.layLine(x, y, 'wire');
       case 'park': return this.placePark(x, y);
+      case 'upgrade': return this.upgradeRoad(x, y);
       case 'res': return this.placeZone(Z.RES, x, y);
       case 'com': return this.placeZone(Z.COM, x, y);
       case 'ind': return this.placeZone(Z.IND, x, y);
@@ -356,6 +363,23 @@ class City {
     const h = test(this.kind(x - 1, y)) || test(this.kind(x + 1, y));
     const v = test(this.kind(x, y - 1)) || test(this.kind(x, y + 1));
     return !(h && v);
+  }
+
+  /** Straße um eine Stufe ausbauen (Hauptstraße → Schnellstraße). */
+  upgradeRoad(x, y) {
+    if (!inBounds(x, y)) return { ok: false };
+    const i = idx(x, y), k = this.tile[i];
+    if (k !== T.ROAD && k !== T.ROADBRIDGE) {
+      if (isRoadK(k)) return { ok: false, err: 'Kreuzungen mit Schiene oder Leitung können nicht ausgebaut werden.' };
+      return { ok: false, err: 'Hier ist keine Straße zum Ausbauen.' };
+    }
+    const lvl = roadLevel(this, i);
+    if (lvl >= 2) return { ok: true, cost: 0, noop: true };
+    const cost = Math.round(ROAD_UPGRADE_COST[lvl] * (k === T.ROADBRIDGE ? 2.5 : 1));
+    if (!this.canAfford(cost)) return { ok: false, err: 'Nicht genug Geld!', money: true };
+    this.spend(cost);
+    this.setTile(x, y, k, lvl + 1);
+    return { ok: true, cost };
   }
 
   placePark(x, y) {

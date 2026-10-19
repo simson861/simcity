@@ -6,6 +6,7 @@ const TOOLS = [
   { id: 'bulldozer', name: 'Bulldozer', cost: 1, key: 'b', line: true },
   { id: 'query', name: 'Abfrage', cost: 0, key: 'q' },
   { id: 'road', name: 'Straße', cost: 10, key: 'r', line: true, note: 'Brücke $50' },
+  { id: 'upgrade', name: 'Straßenausbau', cost: 40, key: 'u', line: true, note: 'Hauptstraße $40, Schnellstraße +$80, Brücken ×2,5' },
   { id: 'rail', name: 'Schiene', cost: 20, key: 't', line: true, note: 'Tunnel $100' },
   { id: 'wire', name: 'Stromleitung', cost: 5, key: 'l', line: true, note: 'über Wasser $25' },
   { id: 'park', name: 'Park', cost: 10, key: 'p', line: true },
@@ -323,6 +324,12 @@ const UI = {
         g.fillStyle = '#000080'; g.font = 'bold 26px Georgia, serif'; g.textAlign = 'center'; g.fillText('?', 20, 28);
         break;
       case 'road': g.drawImage(GFX.tileRoad(15), 0, 0, 16, 16, 2, 0, 36, 36); break;
+      case 'upgrade':
+        g.drawImage(GFX.tileRoad(10), 0, 0, 16, 16, 2, 0, 36, 36);
+        g.drawImage(GFX.roadUpgrade(10, 2, false), 0, 0, 16, 16, 2, 0, 36, 36);
+        g.fillStyle = '#fff'; g.fillRect(28, 2, 10, 10); g.fillStyle = '#208020';
+        g.beginPath(); g.moveTo(33, 3); g.lineTo(37, 8); g.lineTo(34.5, 8); g.lineTo(34.5, 11); g.lineTo(31.5, 11); g.lineTo(31.5, 8); g.lineTo(29, 8); g.fill();
+        break;
       case 'rail': g.drawImage(GFX.tileRail(10), 0, 0, 16, 16, 2, 0, 36, 36); break;
       case 'wire': g.drawImage(GFX.tileWire(10), 0, 0, 16, 16, 2, 0, 36, 36); break;
       case 'park': g.drawImage(GFX.tilePark(0), 0, 0, 16, 16, 2, 0, 36, 36); break;
@@ -1179,6 +1186,8 @@ const UI = {
         [T.ROADRAIL]: 'Bahnübergang', [T.PARK]: 'Park', [T.ROADBRIDGE]: 'Brücke', [T.RAILBRIDGE]: 'Eisenbahntunnel',
         [T.WIREWATER]: 'Unterwasserkabel',
       }[k] || '?';
+      const rl = roadLevel(c, i);
+      if (rl) name = k === T.ROADBRIDGE ? ROAD_LEVEL_NAMES[rl] + 'nbrücke' : ROAD_LEVEL_NAMES[rl];
     }
     const cat = (v, a, b, cc, names) => names[v < a ? 0 : v < b ? 1 : v < cc ? 2 : 3];
     const dens = cat(c.popDensity[h], 64, 128, 192, ['Niedrig', 'Mittel', 'Hoch', 'Sehr hoch']);

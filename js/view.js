@@ -148,6 +148,11 @@ class View {
           continue;
         }
         ctx.drawImage(this.tileImage(x, y, animFrame), sx, sy, ts, ts);
+        if ((k === T.ROAD || k === T.ROADBRIDGE) && c.vari[i]) {
+          const lvl = roadLevel(c, i);
+          const m = k === T.ROAD ? c.roadMask(x, y) : (this.bridgeOrient(x, y, isRoadK) ? 5 : 10);
+          ctx.drawImage(GFX.roadUpgrade(m, lvl, k === T.ROADBRIDGE), sx, sy, ts, ts);
+        }
         if (isRoadK(k) && k !== T.ROADBRIDGE || k === T.ROADBRIDGE) this.drawTraffic(ctx, x, y, sx, sy, time, paused);
       }
     }

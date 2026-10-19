@@ -852,6 +852,12 @@ const Coop = {
       // offensichtlich wirkungslose Felder gar nicht erst senden
       if ((tool.id === 'road' && isRoadK(k)) || (tool.id === 'rail' && isRailK(k)) || (tool.id === 'wire' && isWireK(k)) ||
         (tool.id === 'park' && k === T.PARK)) return true;
+      if (tool.id === 'upgrade') {
+        if (k !== T.ROAD && k !== T.ROADBRIDGE) return fail(isRoadK(k) ? 'Kreuzungen mit Schiene oder Leitung können nicht ausgebaut werden.' : 'Hier ist keine Straße zum Ausbauen.');
+        const lvl = roadLevel(c, idx(x, y));
+        if (lvl >= 2) return true;
+        cost = Math.round(ROAD_UPGRADE_COST[lvl] * (k === T.ROADBRIDGE ? 2.5 : 1));
+      }
       if (tool.id === 'bulldozer') {
         if (k === T.DIRT || k === T.WATER) return true;
         if (k === T.ZONE) { const z = c.zoneAt(x, y); if (z) { size = z.size; cx = z.x; cy = z.y; cost = z.size * z.size; } }

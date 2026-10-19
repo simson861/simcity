@@ -155,6 +155,8 @@ Object.assign(City.prototype, {
   doRoad(x, y, k) {
     // Brücke zählt 5 Felder (1 + 4), starker Verkehr doppelt – wie doRoad() im Original
     this.cen.roadTotal += k === T.ROADBRIDGE ? 5 : 1;
+    // Ausgebaute Straßen kosten mehr Unterhalt (Erweiterung, nicht im Original)
+    this.cen.roadTotal += roadLevel(this, idx(x, y)) * (k === T.ROADBRIDGE ? 2 : 1);
     if (k !== T.ROADBRIDGE && this.trafficDensity[(x >> 1) + (y >> 1) * HW] >= 192) this.cen.roadTotal++;
     if (this.censusOnly) return;
     if (this.roadEffect < 30 && (rand16() & 511) === 0 && k !== T.ROADWIRE && this.roadEffect < (rand16() & 31)) {
@@ -528,7 +530,8 @@ Object.assign(City.prototype, {
       if (k !== T.ROAD && k !== T.ROADWIRE && k !== T.ROADBRIDGE) continue;
       const x = i % W, y = (i / W) | 0;
       const h = (x >> 1) + (y >> 1) * HW;
-      let t = this.trafficDensity[h] + 50;
+      // Ausgebaute Straßen verkraften mehr Autos: geringere Last je Fahrt
+      let t = this.trafficDensity[h] + ROAD_TRAFFIC_ADD[roadLevel(this, i)];
       if (t > 240) t = 240;
       this.trafficDensity[h] = t;
       if (t >= 240 && rand(5) === 0) {
@@ -600,7 +603,9 @@ Object.assign(City.prototype, {
   pollutionValue(x, y, k) {
     if (isRoadK(k)) {
       const t = this.trafficDensity[(x >> 1) + (y >> 1) * HW];
-      return t >= 192 ? 75 : t >= 64 ? 50 : 0;
+      // Schnellstraßen verursachen auch bei wenig Verkehr etwas Lärm/Abgase
+      const base = roadLevel(this, idx(x, y)) === 2 ? 15 : 0;
+      return Math.max(base, t >= 192 ? 75 : t >= 64 ? 50 : 0);
     }
     if (k === T.FIRE) return 90;
     if (k === T.RAD) return 255;
