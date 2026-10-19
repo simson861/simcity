@@ -1,6 +1,11 @@
 'use strict';
 /* Darstellung der Stadt im Hauptfenster und der Übersichtskarte. */
 
+// Nachbarn: N, O, S, W, NO, SO, SW, NW
+const NB8X = [0, 1, 0, -1, 1, 1, -1, -1], NB8Y = [-1, 0, 1, 0, -1, 1, 1, -1];
+// Kurvenmittelpunkte (Feldpixel) je Straßenmaske, passend zu GFX.drawRoadArms
+const ROAD_CURVE = { 3: [16, 0], 6: [16, 16], 12: [0, 16], 9: [0, 0] };
+
 class View {
   constructor(canvas, city) {
     this.canvas = canvas;
@@ -64,18 +69,11 @@ class View {
     const k = c.tile[i], v = c.vari[i];
     switch (k) {
       case T.DIRT: return GFX.tileDirt(v % 3);
-      case T.WATER: {
-        let m = 0;
-        for (let d = 0; d < 4; d++) {
-          const nk = c.kind(x + DX[d], y + DY[d]);
-          if (nk >= 0 && !isWaterK(nk) && nk !== T.FLOOD) m |= 1 << d;
-        }
-        return GFX.tileWater(m, (frame + ((x * 3 + y * 5) & 3)) & 3);
-      }
+      case T.WATER: return GFX.tileWater(this.landMask(x, y), (frame + ((x * 3 + y * 5) & 3)) & 3);
       case T.TREES: {
-        let dense = true;
-        for (let d = 0; d < 4; d++) { const nk = c.kind(x + DX[d], y + DY[d]); if (nk !== T.TREES && nk !== -1) { dense = false; break; } }
-        return GFX.tileTrees((x * 7 + y * 13) & 3, dense);
+        let m = 0;
+        for (let d = 0; d < 8; d++) { const nk = c.kind(x + NB8X[d], y + NB8Y[d]); if (nk === T.TREES || nk === -1) m |= 1 << d; }
+        return GFX.tileTrees((x * 7 + y * 13) & 3, m);
       }
       case T.RUBBLE: return GFX.tileRubble(v % 3);
       case T.FIRE: return GFX.tileFire((frame + x + y) & 3);
@@ -88,11 +86,22 @@ class View {
       case T.ROADRAIL: return GFX.tileRoadRail(v);
       case T.RAILWIRE: return GFX.tileRailWire(v);
       case T.PARK: return GFX.tilePark(v % 5);
-      case T.ROADBRIDGE: return GFX.tileBridge('road', this.bridgeOrient(x, y, isRoadK), frame & 3);
-      case T.RAILBRIDGE: return GFX.tileBridge('rail', this.bridgeOrient(x, y, isRailK), frame & 3);
-      case T.WIREWATER: return GFX.tileBridge('wire', this.bridgeOrient(x, y, isWireK, true), frame & 3);
+      case T.ROADBRIDGE: return GFX.tileBridge('road', this.bridgeOrient(x, y, isRoadK), frame & 3, this.landMask(x, y));
+      case T.RAILBRIDGE: return GFX.tileBridge('rail', this.bridgeOrient(x, y, isRailK), frame & 3, this.landMask(x, y));
+      case T.WIREWATER: return GFX.tileBridge('wire', this.bridgeOrient(x, y, isWireK, true), frame & 3, this.landMask(x, y));
     }
     return GFX.tileDirt(0);
+  }
+
+  // Ufermaske: Bit gesetzt = Land (0-3: N,O,S,W; 4-7: NO,SO,SW,NW)
+  landMask(x, y) {
+    const c = this.city;
+    let m = 0;
+    for (let d = 0; d < 8; d++) {
+      const nk = c.kind(x + NB8X[d], y + NB8Y[d]);
+      if (nk >= 0 && !isWaterK(nk) && nk !== T.FLOOD) m |= 1 << d;
+    }
+    return m;
   }
 
   bridgeOrient(x, y, test, zonesToo) {
@@ -182,6 +191,17 @@ class View {
       const off = ((ph + j * 16 / n + (x * 5 + y * 3)) % 16 + 16) % 16;
       const col = cols[(x + y + j) % 5];
       ctx.fillStyle = col;
+      // Kurve: Fahrzeuge folgen dem Bogen
+      const cv = k === T.ROAD ? ROAD_CURVE[mask] : null;
+      if (cv) {
+        const aMid = Math.atan2(8 - cv[1], 8 - cv[0]);
+        for (const [rad, dir] of [[5.5, 1], [10.5, -1]]) {
+          const a = aMid + dir * (off / 16 - 0.5) * Math.PI / 2;
+          const px = Math.round(cv[0] + Math.cos(a) * rad - 1), py = Math.round(cv[1] + Math.sin(a) * rad - 1);
+          ctx.fillRect(sx + px * z, sy + py * z, 2 * z, 2 * z);
+        }
+        continue;
+      }
       // waagrechte Fahrspuren
       if (mask & 10) {
         if (mask & 8 || mask & 2) {
@@ -230,7 +250,7 @@ class View {
       for (let p = 0; p < 4; p++) {
         const ph = ((t / 1400 + p / 4) % 1);
         ctx.fillStyle = `rgba(240,240,240,${0.6 * (1 - ph)})`;
-        ctx.beginPath(); ctx.arc(ox + (18 + ph * 8) * zm, oy + (20 - ph * 20) * zm, (5 + ph * 6) * zm, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ox + (NUCLEAR_STEAM[0] + ph * 8) * zm, oy + (NUCLEAR_STEAM[1] - ph * 16) * zm, (4 + ph * 6) * zm, 0, Math.PI * 2); ctx.fill();
       }
     }
     // Fehlender Strom: blinkender Blitz
