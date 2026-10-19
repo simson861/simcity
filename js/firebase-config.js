@@ -21,4 +21,13 @@
  * Ohne Konfiguration läuft das Spiel offline wie bisher. Zum lokalen Testen mit dem
  * Firebase-Emulator die Seite mit „?emulator“ aufrufen (siehe ONLINE-EINRICHTUNG.md).
  */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = {
+  Key: "AIzaSyB_IysWsP7rV-1bZR7q4G9-zOPxt0XhXJA",
+  authDomain: "simcity-nachbau.firebaseapp.com",
+  databaseURL: "https://simcity-nachbau-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "simcity-nachbau",
+  storageBucket: "simcity-nachbau.firebasestorage.app",
+  messagingSenderId: "934726648860",
+  appId: "1:934726648860:web:bcca084219028315fa4bd9",
+  measurementId: "G-1BRYS6NVCG"
+  };
