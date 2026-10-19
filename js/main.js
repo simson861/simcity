@@ -25,7 +25,7 @@
   window.SC = { city, view, UI };   // für die Konsole
 
   // Neue Version auf dem Server? (version.txt wird bei jeder Veröffentlichung zusammen mit ?v= in index.html erhöht)
-  const GAME_VERSION = '2026-10-19.6';
+  const GAME_VERSION = '2026-10-19.7';
   let versionHinted = false;
   const checkVersion = () => {
     if (versionHinted || location.protocol === 'file:' || !window.fetch) return;

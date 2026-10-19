@@ -18,7 +18,8 @@ const Seasons = {
   variantOf(month) {
     if (!this.enabled) return null;
     if (month === 0 || month === 1) return 'w';        // Winter, geschlossene Schneedecke
-    if (month === 11 || month === 2) return 'wl';      // Früh-/Spätwinter, Schnee fleckig
+    if (month === 11) return 'wl';                     // Dezember: erster Schnee in Flecken
+    if (month === 2) return 'wm';                      // März: Schneeschmelze, Restflecken
     if (month === 3 || month === 4) return 'sp';       // Frühling, Blüten
     if (month >= 8 && month <= 10) return 'a';         // Herbst, buntes Laub
     return null;
@@ -48,26 +49,53 @@ const Seasons = {
     try { data = g.getImageData(0, 0, c.width, c.height); } catch (e) { return src; }
     const d = data.data;
     const w = c.width;
+    const winter = v === 'w' || v === 'wl' || v === 'wm';
+    // Schneedeckung: geschlossen, oder in zusammenhängenden Flecken (4×4-Pixel-Blöcke, weich gemischt)
+    const cover = v === 'w' ? 1 : v === 'wl' ? 0.6 : v === 'wm' ? 0.35 : 0;
+    const cell = (bx, by) => {
+      let h = (bx * 374761393 + by * 668265263) >>> 0;
+      h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+      return ((h ^ (h >>> 16)) % 1000) / 1000;
+    };
+    // weiches Wertrauschen (Gitter 6 px, bilinear) für rundliche Schneeflecken
+    const smooth = (x, y) => {
+      const gx = x / 6, gy = y / 6, x0 = Math.floor(gx), y0 = Math.floor(gy);
+      let fx = gx - x0, fy = gy - y0;
+      fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+      const a = cell(x0, y0), b2 = cell(x0 + 1, y0), c2 = cell(x0, y0 + 1), d2 = cell(x0 + 1, y0 + 1);
+      return (a + (b2 - a) * fx) * (1 - fy) + (c2 + (d2 - c2) * fx) * fy;
+    };
     for (let p = 0, i = 0; p < d.length; p += 4, i++) {
       if (d[p + 3] < 16) continue;
+      const x = i % w, y = (i / w) | 0;
       const r = d[p], gr = d[p + 1], b = d[p + 2];
       const lum = (r * 3 + gr * 6 + b) / 10;
-      const h = ((i % w) * 73856093 ^ ((i / w) | 0) * 19349663 ^ i * 83492791) >>> 0;
+      const h = (x * 73856093 ^ y * 19349663 ^ i * 83492791) >>> 0;
       const rnd = (h % 1000) / 1000;
       const green = gr > r + 8 && gr > b + 8;
-      const brown = r > gr && gr >= b && r - b > 28 && lum < 200;
+      // Nur echter Erdboden (keine Schwellen, kein Schotter, keine Dächer/Fassaden)
+      const ground = r > gr && gr > b && r - b >= 70 && r - b <= 125 && r - gr >= 25 && r - gr <= 65 && lum >= 85 && lum <= 185;
       const blue = b > r + 30 && b > gr + 5;
       let o = null;
-      if (v === 'w' || v === 'wl') {
-        if (v === 'wl' && rnd < 0.45) continue;            // fleckiger Schnee
-        if (green) {
-          if (lum < 95 && rnd < 0.6) o = [34 + lum * 0.15, 62 + lum * 0.2, 48];     // Nadelbäume bleiben dunkel
-          else o = [228 + rnd * 20, 232 + rnd * 18, 240 + rnd * 12];
-        } else if (brown) {
-          const s = 212 + (lum / 200) * 30 + rnd * 8;
-          o = [s, s + 2, s + 10];
+      if (winter) {
+        // Flecken: Blockrauschen, an den Rändern zur Hälfte gemischt
+        const n = cover >= 1 ? 0 : smooth(x, y);
+        const snowy = n < cover;
+        const edge = !snowy && n < cover + 0.06;
+        const snow = [226 + rnd * 18, 231 + rnd * 16, 240 + rnd * 10];
+        const mixSnow = (k) => [r + (snow[0] - r) * k, gr + (snow[1] - gr) * k, b + (snow[2] - b) * k];
+        if (green && lum < 100) {
+          // Baumkronen: Laubbäume kahl (graubraunes Geäst), einige Nadelbäume bleiben grün, Schnee auf den Kronen
+          const bare = (h % 7) !== 0;
+          const base = bare ? [92 + lum * 0.12, 80 + lum * 0.1, 66] : [34 + lum * 0.15, 62 + lum * 0.2, 48];
+          o = (snowy && lum > 72) ? mixSnow(0.85) : base;   // Schnee nur auf den hellen Kronenpartien
+        } else if (green || ground) {
+          if (snowy) o = mixSnow(0.92);
+          else if (edge) o = mixSnow(0.5);
+          else if (green) o = [r * 0.75 + 30, gr * 0.6 + 28, b * 0.6 + 14];       // winterlich fahles Gras
+          else if (v === 'wm') o = [r * 0.82, gr * 0.82, b * 0.85];              // nasser Boden bei Schneeschmelze
         } else if (blue && v === 'w') {
-          o = [r * 0.45 + 120, gr * 0.45 + 135, b * 0.5 + 125];                     // Eis
+          o = [r * 0.45 + 120, gr * 0.45 + 135, b * 0.5 + 125];                  // Eis
         }
       } else if (v === 'a') {
         if (green) {
@@ -76,7 +104,7 @@ const Seasons = {
             const q = pal[h % pal.length], f = 0.55 + lum / 160;
             o = [q[0] * f, q[1] * f, q[2] * f];
           } else {
-            o = [lum * 0.95 + 18, lum * 0.85 + 10, lum * 0.35];                       // trockenes Gras
+            o = [lum * 0.95 + 18, lum * 0.85 + 10, lum * 0.35];                   // trockenes Gras
           }
         }
       } else if (v === 'sp') {
