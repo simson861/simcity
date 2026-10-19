@@ -27,7 +27,7 @@ const COOP_SCALARS = ['name', 'level', 'funds', 'startYear', 'cityTime', 'simCyc
   'cityScore', 'cityScoreDelta', 'cityPop', 'cityPopDelta', 'lastCityPop', 'cityClass', 'cityYes', 'cityAssessedValue',
   'problemTable', 'problemVotes', 'problemOrder', 'autoBulldoze', 'autoBudget', 'disastersEnabled', 'scenario',
   'nextZoneId', 'cashFlow', 'taxFund', 'roadFund', 'fireFund', 'policeFund', 'roadSpend', 'fireSpend', 'policeSpend',
-  'prevFunds', 'crimeRamp', 'pollutionRamp', 'cityCenterX', 'cityCenterY', 'stats', 'totalPop', 'speed',
+  'prevFunds', 'taxBoost', 'loans', 'taxPaidYear', 'interestPaid', 'crimeRamp', 'pollutionRamp', 'cityCenterX', 'cityCenterY', 'stats', 'totalPop', 'speed',
   'powerCapacity', 'powerUsed', 'brownout', 'needHospital', 'needChurch',
   'landValueAverage', 'pollutionAverage', 'crimeAverage', 'trafficAverage',
   'pollutionMaxX', 'pollutionMaxY', 'crimeMaxX', 'crimeMaxY', 'trafficMaxX', 'trafficMaxY', 'shake', 'floodCnt'];
@@ -39,7 +39,7 @@ const COOP_MAPS = ['trafficDensity', 'pollution', 'landValue', 'crime', 'popDens
 // Ereignisse der Simulation, die an Mitspieler weitergereicht werden
 const COOP_EVENTS = ['message', 'milestone', 'explosion', 'earthquake', 'evaluation', 'scenarioEnd'];
 
-const COOP_TOOLS = ['bulldozer', 'road', 'rail', 'wire', 'park', 'res', 'com', 'ind', 'police', 'fire', 'stadium', 'port', 'coal', 'nuclear', 'airport'];
+const COOP_TOOLS = ['bulldozer', 'road', 'upgrade', 'loan', 'repay', 'rail', 'wire', 'park', 'res', 'com', 'ind', 'police', 'fire', 'stadium', 'port', 'coal', 'nuclear', 'airport'];
 
 function coopB64(arr) {
   const u8 = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
@@ -197,11 +197,25 @@ const Coop = {
         <span>Verkehr:</span><span class="r">${Math.round(c.roadPct * 100)} %</span>
         <span>Feuerwehr:</span><span class="r">${Math.round(c.firePct * 100)} %</span>
         <span>Polizei:</span><span class="r">${Math.round(c.policePct * 100)} %</span>
+        <span>Steuerertrag:</span><span class="r">×${c.taxBoost || 1}</span>
+        <span>Monatlich in die Kasse:</span><span class="r">${fmtMoney(Math.floor(c.calcTaxFund() / 12))}</span>
         <span>Kassenstand:</span><span class="r">${fmtMoney(c.funds)}</span>
         <span>Geldfluss (Vorjahr):</span><span class="r">${fmtMoney(c.cashFlow)}</span>
+        <span>Offene Kredite:</span><span class="r">${(c.loans || []).length} × ${fmtMoney(LOAN_AMOUNT)}</span>
+        <span>Zinsen pro Jahr:</span><span class="r">${fmtMoney(c.loanInterest())}</span>
       </div>
-      <p class="note">Steuern und Haushalt legt nur der Gastgeber fest (<b>${esc(host)}</b>). Die Stadtkasse teilen sich alle Spieler.</p></div>`,
-    [['OK', null, true]], { modal: false });
+      <p class="note">Steuern und Haushalt legt nur der Gastgeber fest (<b>${esc(host)}</b>). Die Stadtkasse teilen sich alle Spieler –
+      Kredite kann jeder für die gemeinsame Kasse aufnehmen.</p></div>`,
+    [['Kredit tilgen', () => this.sendCommand('repay')], [`Kredit aufnehmen (${fmtMoney(LOAN_AMOUNT)})`, () => this.sendCommand('loan')], ['OK', null, true]], { modal: false });
+  },
+
+  /** Befehl ohne Kartenfeld (Kredit) an den Gastgeber schicken. */
+  sendCommand(tool) {
+    if (this.role !== 'client') return;
+    this.flush();
+    this.queue = { tool, cells: [[0, 0]], marks: [] };
+    this.flush();
+    UI.status(tool === 'loan' ? 'Kreditantrag an den Gastgeber geschickt…' : 'Tilgung an den Gastgeber geschickt…');
   },
 
   // =================== Lobby ===================

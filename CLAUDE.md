@@ -34,5 +34,7 @@ Classic `<script>` tags, not modules (vendored Firebase compat SDK in `js/vendor
 
 ## Conventions
 
+- Releasing: bump the version in `version.txt`, `GAME_VERSION` in `js/main.js` and all `?v=` query strings in `index.html` together – running games poll `version.txt` and ask players to reload (important for multiplayer, where host and clients must run the same code).
+
 - UI text and code comments are German; keep it that way.
 - Saves are JSON (`format: 'simcity1989-nachbau'`); changing `serialize` needs a matching `deserialize` path for old saves.

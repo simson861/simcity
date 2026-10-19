@@ -23,6 +23,25 @@
   UI.startScreen();
   window.SC = { city, view, UI };   // für die Konsole
 
+  // Neue Version auf dem Server? (version.txt wird bei jeder Veröffentlichung zusammen mit ?v= in index.html erhöht)
+  const GAME_VERSION = '2026-10-19.4';
+  let versionHinted = false;
+  const checkVersion = () => {
+    if (versionHinted || location.protocol === 'file:' || !window.fetch) return;
+    fetch('version.txt?t=' + Date.now(), { cache: 'no-store' }).then(r => (r.ok ? r.text() : '')).then(t => {
+      t = t.trim();
+      if (t && t !== GAME_VERSION) {
+        versionHinted = true;
+        UI.alert('Neue Version verfügbar', '<p style="max-width:340px">Es gibt eine neue Version des Spiels. Bitte die Seite neu laden ' +
+          '(Strg+Umschalt+R). Im Multiplayer sollten alle Spieler neu laden – der Gastgeber setzt den Raum danach unter ' +
+          '<i>Online → Gemeinsame Stadt → Meine Räume → Fortsetzen</i> fort. Die Stadt wird vorher automatisch gespeichert.</p>');
+        if (typeof Cloud !== 'undefined' && Cloud.autoSave) { try { Cloud.autoSave('version', true); } catch (e) { /* egal */ } }
+      }
+    }).catch(() => {});
+  };
+  setTimeout(checkVersion, 15000);
+  setInterval(checkVersion, 5 * 60 * 1000);
+
   // Millisekunden pro Simulationszyklus (16 Phasen = 1 Woche)
   const CYCLE_MS = [0, 1200, 400, 100];
   let last = performance.now(), acc = 0, spriteAcc = 0, uiAcc = 0;

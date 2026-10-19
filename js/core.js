@@ -280,6 +280,9 @@ class City {
       case 'wire': return this.layLine(x, y, 'wire');
       case 'park': return this.placePark(x, y);
       case 'upgrade': return this.upgradeRoad(x, y);
+      // Kredite (Multiplayer: Mitspieler schicken sie als Aktion an den Gastgeber)
+      case 'loan': return Object.assign({ cost: 0 }, this.takeLoan());
+      case 'repay': return Object.assign({ cost: 0 }, this.repayLoan());
       case 'res': return this.placeZone(Z.RES, x, y);
       case 'com': return this.placeZone(Z.COM, x, y);
       case 'ind': return this.placeZone(Z.IND, x, y);
