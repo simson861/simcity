@@ -1,0 +1,28 @@
+# Veröffentlicht das Spiel bei jedem Push auf main über Firebase Hosting
+# (https://simcity-nachbau.web.app). Benötigt das Repository-Secret FIREBASE_SERVICE_ACCOUNT
+# (Anleitung in ONLINE-EINRICHTUNG.md); ohne Secret wird der Schritt übersprungen.
+name: Firebase Hosting
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: firebase-hosting
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_SECRET: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hinweis ohne Secret
+        if: env.HAS_SECRET != 'true'
+        run: echo "Secret FIREBASE_SERVICE_ACCOUNT fehlt – Veröffentlichung übersprungen (siehe ONLINE-EINRICHTUNG.md)."
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.HAS_SECRET == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: simcity-nachbau
+          channelId: live

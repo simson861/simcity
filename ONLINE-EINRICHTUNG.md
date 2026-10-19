@@ -57,6 +57,21 @@ Alternativ kannst du die Werte auch Claude schicken, dann trägt Claude sie ein.
 
 Ist das Repository privat, braucht GitHub Pages ein kostenpflichtiges GitHub-Konto – oder du stellst das Repository auf öffentlich.
 
+## Alternative: Firebase Hosting (falls GitHub Pages streikt)
+
+Das Repository enthält eine GitHub Action, die das Spiel bei jedem Push zusätzlich nach
+<https://simcity-nachbau.web.app> veröffentlicht. Einmalig einrichten:
+
+1. Firebase-Konsole → links **Build → Hosting** → **Jetzt starten** (die angezeigten Befehle nicht ausführen, nur durchklicken bis „Weiter zur Konsole“).
+2. Zahnrad → **Projekteinstellungen → Dienstkonten** → **Neuen privaten Schlüssel generieren** → JSON-Datei wird heruntergeladen.
+3. GitHub-Repository → **Settings → Secrets and variables → Actions → New repository secret**:
+   Name `FIREBASE_SERVICE_ACCOUNT`, Wert = kompletter Inhalt der JSON-Datei → **Add secret**. Die Datei danach löschen –
+   dieser Schlüssel ist (anders als der Web-API-Schlüssel) wirklich geheim.
+4. GitHub → **Actions → Firebase Hosting → Run workflow** (oder einfach den nächsten Push abwarten).
+
+Die Adressen `simcity-nachbau.web.app` und `simcity-nachbau.firebaseapp.com` sind für die Google-Anmeldung automatisch freigegeben.
+Falls du den API-Schlüssel auf Websites beschränkt hast, beide Adressen dort eintragen.
+
 ## Lokal testen (ohne echtes Firebase-Projekt)
 
 Mit dem Firebase-Emulator lassen sich alle Online-Funktionen ohne Google-Konto ausprobieren:
