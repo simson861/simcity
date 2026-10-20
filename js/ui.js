@@ -20,6 +20,7 @@ const TOOLS = [
   { id: 'coal', name: 'Kohlekraftwerk', cost: 3000, key: '8', zone: Z.COAL },
   { id: 'nuclear', name: 'Atomkraftwerk', cost: 5000, key: '9', zone: Z.NUCLEAR },
   { id: 'airport', name: 'Flughafen', cost: 10000, key: '0', zone: Z.AIRPORT },
+  { id: 'move', name: 'Gebäude versetzen', cost: 0, key: 'v', note: 'halber Baupreis, Ausbaustufe bleibt' },
   { id: 'pan', name: 'Karte verschieben', cost: 0, key: 'h', wide: true },
 ];
 
@@ -340,6 +341,22 @@ const UI = {
       case 'res': drawZ(fake(Z.RES, 0, 0)); break;
       case 'com': drawZ(fake(Z.COM, 0, 0)); break;
       case 'ind': drawZ(fake(Z.IND, 0, 0)); break;
+      case 'move': {
+        const img = GFX.zoneImage(fake(Z.COM, 2, 1));
+        g.drawImage(img, 0, 0, img.width, img.height, 2, 0, 36, 36);
+        // Pfeilkreuz
+        g.fillStyle = '#fff'; g.fillRect(12, 8, 16, 20); g.fillRect(10, 10, 20, 16);
+        g.fillStyle = '#c01818';
+        g.fillRect(19, 11, 2, 14); g.fillRect(13, 17, 14, 2);
+        for (const [ax, ay, dx, dy] of [[20, 9, 0, 1], [20, 27, 0, -1], [11, 18, 1, 0], [29, 18, -1, 0]]) {
+          g.beginPath();
+          g.moveTo(ax, ay);
+          g.lineTo(ax + dx * 4 + dy * 3, ay + dy * 4 + dx * 3);
+          g.lineTo(ax + dx * 4 - dy * 3, ay + dy * 4 - dx * 3);
+          g.fill();
+        }
+        break;
+      }
       case 'pan':
         g.fillStyle = '#000'; g.font = '24px sans-serif'; g.textAlign = 'center'; g.fillText('✋', 20, 28);
         break;
@@ -349,6 +366,7 @@ const UI = {
   },
 
   selectTool(id) {
+    if (id !== 'move') this.cancelMove(true);
     this.tool = id;
     document.querySelectorAll('.tool').forEach(b => b.classList.toggle('active', b.dataset.tool === id));
     const t = TOOLS.find(x => x.id === id);
@@ -423,7 +441,7 @@ const UI = {
       if (e.pointerType === 'touch') {
         this.updateCursor(tx, ty);
         this.showTip(sx, sy, true);
-        drag = { mode: 'pending', sx, sy, lx: tx, ly: ty, errShown: false, spent: 0, touch: true };
+        drag = { mode: 'pending', sx, sy, lx: tx, ly: ty, tx0: tx, ty0: ty, errShown: false, spent: 0, touch: true };
         if (tool.line) {
           const d = drag;
           d.timer = setTimeout(() => { if (drag === d && d.mode === 'pending' && !blocked()) startTool(d); }, 140);
@@ -432,7 +450,7 @@ const UI = {
       }
       if (this.tool === 'query') { this.query(tx, ty); return; }
       if (blocked()) return;
-      drag = { mode: 'tool', lx: tx, ly: ty, errShown: false, spent: 0 };
+      drag = { mode: 'tool', lx: tx, ly: ty, tx0: tx, ty0: ty, errShown: false, spent: 0 };
       this.applyAt(tool, tx, ty, drag);
       this.showTip(sx, sy, false, drag);
     });
@@ -476,7 +494,7 @@ const UI = {
         startTool(drag);
       }
       this.showTip(sx, sy, drag.touch, drag);
-      if (!tool.line) return;
+      if (!tool.line) { drag.lx = tx; drag.ly = ty; return; }
       if (tx === drag.lx && ty === drag.ly) return;
       // Linie im 4er-Raster interpolieren (keine diagonalen Lücken)
       let x = drag.lx, y = drag.ly;
@@ -505,7 +523,18 @@ const UI = {
         // Touch-Tipp: Abfrage oder Werkzeug an der (letzten) Position
         const tool = curTool();
         if (this.tool === 'query') this.query(drag.lx, drag.ly);
-        else if (!blocked()) { drag.mode = 'tool'; this.applyAt(tool, drag.lx, drag.ly, drag); }
+        else if (!blocked()) {
+          drag.mode = 'tool';
+          // Gebäude per Finger gezogen: am Startfeld aufnehmen, am Endfeld absetzen
+          if (tool.id === 'move' && !this.moveSel && (drag.lx !== drag.tx0 || drag.ly !== drag.ty0)) {
+            this.applyAt(tool, drag.tx0, drag.ty0, drag);
+            if (drag.picked) this.applyAt(tool, drag.lx, drag.ly, drag);
+          } else this.applyAt(tool, drag.lx, drag.ly, drag);
+        }
+      } else if (drag.mode === 'tool' && !cancelled && drag.picked && this.tool === 'move' &&
+        (drag.lx !== drag.tx0 || drag.ly !== drag.ty0)) {
+        // Maus: Gebäude mit gedrückter Taste gezogen und losgelassen
+        this.applyAt(curTool(), drag.lx, drag.ly, drag);
       }
       if (drag.mode === 'tool' && drag.spent) this.status(`Kosten: ${fmtMoney(drag.spent)}`);
       const wasTouch = drag.touch;
@@ -535,6 +564,7 @@ const UI = {
 
   applyAt(tool, x, y, drag) {
     if (!inBounds(x, y)) return;
+    if (tool.id === 'move') { this.moveAt(tool, x, y, drag); return; }
     for (const h of this.toolHooks) if (h(tool, x, y, drag)) return;
     const c = this.city;
     const r = c.applyTool(tool.id, x, y);
@@ -556,9 +586,80 @@ const UI = {
     }
   },
 
+  /** Gebäude versetzen: erster Klick wählt aus, zweiter Klick (oder Ziehen und Loslassen) setzt ab. */
+  moveAt(tool, x, y, drag) {
+    const c = this.city;
+    const fail = err => {
+      drag.err = err;
+      if (!drag.errShown) { drag.errShown = true; this.status(err, true); Sound.error(); }
+    };
+    const sel = this.moveSel && c.zones.get(this.moveSel.id);
+    const here = c.zoneAt(x, y);
+    if (!sel || (here && here.id !== sel.id)) {
+      // (neues) Gebäude auswählen
+      if (!here) { this.cancelMove(true); fail('Zuerst ein Gebäude anklicken.'); return; }
+      this.moveSel = { id: here.id, dx: x - here.x, dy: y - here.y };
+      this.view.moveSel = here.id;
+      drag.picked = true;
+      drag.err = null;
+      this.status(`${this.zoneTypeName(here)} ausgewählt – Zielort anklicken oder hinziehen (Esc bricht ab).`);
+      Sound.build();
+      this.updateCursor(x, y);
+      return;
+    }
+    const x0 = x - this.moveSel.dx, y0 = y - this.moveSel.dy;
+    if (x0 === sel.x && y0 === sel.y) {
+      if (!drag.picked) { this.cancelMove(); this.status('Auswahl aufgehoben.'); }
+      return;
+    }
+    const mv = { fx: sel.x, fy: sel.y, x0, y0 };
+    for (const h of this.toolHooks) if (h(tool, x, y, drag, mv)) { if (!drag.err) this.cancelMove(true); return; }
+    const r = c.applyTool('move', mv.fx, mv.fy, x0, y0);
+    if (r.ok) {
+      if (r.noop) return;
+      drag.spent += r.cost || 0;
+      drag.err = null;
+      this.cancelMove(true);
+      Sound.zone();
+      if (c.powerDirty) c.powerScan();
+      this.updateCursor(x, y);
+    } else if (r.err) fail(r.err);
+  },
+
+  cancelMove(quiet) {
+    if (!this.moveSel) return false;
+    this.moveSel = null;
+    if (this.view) this.view.moveSel = null;
+    if (!quiet) this.status('Versetzen abgebrochen.');
+    return true;
+  },
+
+  zoneTypeName(z) {
+    if (z.type === Z.RES && z.special === 1) return 'Krankenhaus';
+    if (z.type === Z.RES && z.special === 2) return 'Kirche';
+    const t = TOOLS.find(t => t.zone === z.type);
+    return t ? t.name : 'Gebäude';
+  },
+
   updateCursor(tx, ty) {
     const tool = TOOLS.find(t => t.id === this.tool);
     if (!tool || tool.id === 'pan') { this.view.cursor = null; this.cursorInfo = null; return; }
+    if (tool.id === 'move') {
+      const c = this.city;
+      const sel = this.moveSel && c.zones.get(this.moveSel.id);
+      if (sel) {
+        const x0 = tx - this.moveSel.dx, y0 = ty - this.moveSel.dy;
+        const chk = c.checkMoveSite(sel, x0, y0);
+        this.view.cursor = { x: x0, y: y0, size: sel.size, ok: chk.ok, ghost: chk.noop ? null : sel };
+        this.cursorInfo = { cost: chk.ok ? chk.cost : Math.round(ZCOST[sel.type] / 2), err: chk.ok ? null : chk.err };
+      } else {
+        if (this.moveSel) this.cancelMove(true);   // Gebäude inzwischen verschwunden
+        const z = c.zoneAt(tx, ty);
+        this.view.cursor = z ? { x: z.x, y: z.y, size: z.size } : { x: tx, y: ty, size: 1 };
+        this.cursorInfo = { cost: z ? Math.round(ZCOST[z.type] / 2) : 0, err: null };
+      }
+      return;
+    }
     if (tool.zone) {
       const [x0, y0] = this.city.zoneOrigin(tool.zone, tx, ty);
       const chk = this.city.checkZoneSite(tool.zone, x0, y0);
@@ -578,12 +679,14 @@ const UI = {
     if (!tool || tool.id === 'pan' || (tool.id === 'query' && !touch)) { this.hideTip(); return; }
     clearTimeout(this.tipTimer);
     const info = this.cursorInfo || { cost: tool.cost };
+    const cost = info.cost != null ? info.cost : tool.cost;
     let html = `<b>${tool.name}</b>`;
-    if (tool.cost) html += ' ' + fmtMoney(info.cost || tool.cost);
+    if (tool.id === 'move' && !this.moveSel) html += '<br>Gebäude anklicken';
+    if (cost) html += ' ' + fmtMoney(cost);
     if (d && d.spent && tool.line) html += `<br>Summe: ${fmtMoney(d.spent)}`;
     const err = (d && d.err) || info.err;
     if (err) html += `<br><span class="bad">${err}</span>`;
-    else if (tool.cost && this.city.funds < (info.cost || tool.cost)) html += '<br><span class="bad">Nicht genug Geld!</span>';
+    else if (cost && this.city.funds < cost) html += '<br><span class="bad">Nicht genug Geld!</span>';
     tip.innerHTML = html;
     tip.style.display = 'block';
     const wrap = tip.parentElement.getBoundingClientRect();
@@ -630,7 +733,7 @@ const UI = {
         case '+': case '=': v.zoomBy(1.25); return;
         case '-': v.zoomBy(0.8); return;
         case ' ': e.preventDefault(); this.setSpeed(this.city.speed === 0 ? (this.lastSpeed || 2) : (this.lastSpeed = this.city.speed, 0)); return;
-        case 'Escape': this.closeTopWindow(); return;
+        case 'Escape': if (!this.cancelMove()) this.closeTopWindow(); return;
         case 'M': case 'm': this.toggleWin('map', () => this.openMap()); return;
         case 'K': case 'k': if (this.toggleMinimap) this.toggleMinimap(); return;
         case 'G': case 'g': this.toggleWin('graphs', () => this.openGraphs()); return;
@@ -1741,7 +1844,7 @@ const UI = {
         <span>Umschalt+B</span><span>Haushalt</span>
         <span>Strg+S</span><span>Speichern</span>
         <span>F1</span><span>Diese Hilfe</span>
-        <span>B Q R T L P H</span><span>Bulldozer, Abfrage, Straße, Schiene, Leitung, Park, Verschieben</span>
+        <span>B Q R U T L P V H</span><span>Bulldozer, Abfrage, Straße, Straßenausbau, Schiene, Leitung, Park, Gebäude versetzen, Karte verschieben</span>
         <span>1 – 0</span><span>Wohnen, Gewerbe, Industrie, Polizei, Feuerwehr, Stadion, Hafen, Kohle-, Atomkraftwerk, Flughafen</span>
       </div>
       <p class="note">Alle Grafiken und Klänge werden im Programm erzeugt – es werden keine Original-Dateien verwendet.</p></div>`,

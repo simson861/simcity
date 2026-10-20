@@ -14,7 +14,8 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 - **Zonen** Wohnen / Gewerbe / Industrie (3 × 3) mit Wachstum nach Nachfrage (R/C/I-Anzeige), Bodenwert,
   Umweltverschmutzung, Verkehrsanbindung und Stromversorgung; Einzelhäuser, Dichtestufen, Krankenhäuser und Kirchen
 - **Bauwerkzeuge** Bulldozer, Straße (Brücken), Straßenausbau (Hauptstraße/Schnellstraße, Erweiterung gegen Staus), Schiene (Tunnel), Stromleitung (Unterwasserkabel), Park,
-  Polizei, Feuerwehr, Stadion, Seehafen, Kohle- und Atomkraftwerk, Flughafen, Abfrage
+  Polizei, Feuerwehr, Stadion, Seehafen, Kohle- und Atomkraftwerk, Flughafen, Abfrage;
+  Gebäude versetzen (Erweiterung: Gebäude samt Ausbaustufe umziehen, kostet den halben Baupreis)
 - **Verkehr** Fahrtensimulation zwischen den Zonen, Staus, Verkehrshubschrauber
 - **Strom** Netz über Leitungen und aneinandergrenzende Zonen, Kraftwerkskapazität (Kohle 700 / Atom 2000 Felder),
   blinkender Blitz bei unversorgten Zonen
@@ -63,7 +64,8 @@ Ohne Einrichtung läuft alles offline; Auto-Speichern funktioniert dann lokal im
 | Minikarte | unten rechts immer sichtbar, Klick/Ziehen springt dorthin; `K` verkleinert/vergrößert |
 | Pause | Leertaste |
 | Fenster | `M` Karte, `G` Grafiken, `B` Haushalt, `E` Bewertung, `Esc` schließt |
-| Werkzeuge | `B` Bulldozer, `Q` Abfrage, `R` Straße, `U` Straßenausbau, `T` Schiene, `L` Leitung, `P` Park, `1`–`0` Zonen/Gebäude |
+| Werkzeuge | `B` Bulldozer, `Q` Abfrage, `R` Straße, `U` Straßenausbau, `T` Schiene, `L` Leitung, `P` Park, `V` Gebäude versetzen, `1`–`0` Zonen/Gebäude |
+| Gebäude versetzen | Gebäude anklicken, dann Zielort anklicken (oder mit gedrückter Taste/Finger hinziehen); `Esc` bricht ab |
 
 ## Hinweise
 

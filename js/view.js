@@ -16,7 +16,8 @@ class View {
     this.zoom = 2;                  // stufenlos 0,5 … 4 (Bildschirmpixel pro Kachelpixel)
     this.zoomAnim = null;           // laufende Zoom-Animation {target, sx, sy}
     this.camX = W / 2; this.camY = H / 2;   // Kamera-Mittelpunkt in Feldern
-    this.cursor = null;             // {x, y, size, ok, line}
+    this.cursor = null;             // {x, y, size, ok, line, ghost}
+    this.moveSel = null;            // Zonen-ID des Gebäudes, das gerade versetzt wird
     this.frame = 0;
     this.overlay = null;            // optional: Kartenebene im Hauptfenster
     this.resize();
@@ -203,9 +204,30 @@ class View {
     // Zusätzliche Ebenen (z. B. Mauszeiger anderer Spieler im Multiplayer)
     if (this.afterDraw) this.afterDraw(ctx, offX, offY, ts, time);
 
+    // Gebäude, das versetzt wird: blinkender Rahmen am alten Platz
+    const sel = this.moveSel != null && c.zones.get(this.moveSel);
+    if (sel) {
+      ctx.save();
+      ctx.setLineDash([4, 3]);
+      ctx.lineDashOffset = paused ? 0 : -(time / 60) % 7;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.strokeRect(offX + sel.x * ts + 1, offY + sel.y * ts + 1, sel.size * ts - 2, sel.size * ts - 2);
+      ctx.restore();
+    }
+
     // Cursor
     if (this.cursor) {
       const cu = this.cursor;
+      if (cu.ghost) {
+        // Vorschau am Zielort
+        const img = GFX.zoneImage(cu.ghost);
+        ctx.save();
+        ctx.globalAlpha = 0.6;
+        ctx.drawImage(img, offX + cu.x * ts, offY + cu.y * ts, cu.size * ts, cu.size * ts);
+        if (cu.ok === false) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#ff0000'; ctx.fillRect(offX + cu.x * ts, offY + cu.y * ts, cu.size * ts, cu.size * ts); }
+        ctx.restore();
+      }
       ctx.lineWidth = 2;
       ctx.strokeStyle = cu.ok === false ? '#ff3030' : '#ffff40';
       const s = cu.size || 1;

@@ -39,7 +39,7 @@ const COOP_MAPS = ['trafficDensity', 'pollution', 'landValue', 'crime', 'popDens
 // Ereignisse der Simulation, die an Mitspieler weitergereicht werden
 const COOP_EVENTS = ['message', 'milestone', 'explosion', 'earthquake', 'evaluation', 'scenarioEnd'];
 
-const COOP_TOOLS = ['bulldozer', 'road', 'upgrade', 'loan', 'repay', 'rail', 'wire', 'park', 'res', 'com', 'ind', 'police', 'fire', 'stadium', 'port', 'coal', 'nuclear', 'airport'];
+const COOP_TOOLS = ['bulldozer', 'road', 'upgrade', 'move', 'loan', 'repay', 'rail', 'wire', 'park', 'res', 'com', 'ind', 'police', 'fire', 'stadium', 'port', 'coal', 'nuclear', 'airport'];
 
 function coopB64(arr) {
   const u8 = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength);
@@ -86,7 +86,7 @@ const Coop = {
     UI.startButtons.push({ label: 'Gemeinsam spielen (online)', fn: () => this.openLobby(true), show: () => Net.available });
 
     if (UI.actionGuards) UI.actionGuards.push(a => this.guard(a));
-    UI.toolHooks.push((tool, x, y, drag) => this.toolHook(tool, x, y, drag));
+    UI.toolHooks.push((tool, x, y, drag, mv) => this.toolHook(tool, x, y, drag, mv));
     UI.tickHooks.push(now => this.tick(now));
     view.canvas.addEventListener('pointerup', () => this.flush());
     view.canvas.addEventListener('pointercancel', () => this.flush());
@@ -571,6 +571,15 @@ const Coop = {
     if (!Array.isArray(cells)) return;
     const c = this.city;
     let err = null;
+    if (a.tool === 'move') {
+      // Gebäude versetzen: [[x,y] eines Feldes des Gebäudes, [x,y] neue linke obere Ecke]
+      const [f, t] = cells;
+      if (Array.isArray(f) && Array.isArray(t)) {
+        const r = c.applyTool('move', f[0] | 0, f[1] | 0, t[0] | 0, t[1] | 0);
+        if (!r.ok && r.err) err = r.err;
+      }
+      cells = [];
+    }
     for (const cell of cells.slice(0, 600)) {
       if (!Array.isArray(cell)) continue;
       const x = cell[0] | 0, y = cell[1] | 0;
@@ -844,7 +853,7 @@ const Coop = {
   },
 
   // =================== Bauen als Mitspieler ===================
-  toolHook(tool, x, y, drag) {
+  toolHook(tool, x, y, drag, mv) {
     if (this.role !== 'client') return false;
     if (!tool || tool.id === 'query' || tool.id === 'pan') return false;
     if (!this.synced || this.syncing) { UI.status('Die Stadt wird noch geladen…', true); return true; }
@@ -856,6 +865,22 @@ const Coop = {
       if (!drag.errShown) { drag.errShown = true; UI.status(err, true); Sound.error(); }
       return true;
     };
+    if (tool.id === 'move') {
+      const z = mv && c.zoneAt(mv.fx, mv.fy);
+      if (!z) return fail('Hier steht kein Gebäude.');
+      const chk = c.checkMoveSite(z, mv.x0, mv.y0);
+      if (!chk.ok) return fail(chk.err);
+      if (chk.noop) return true;
+      if (this.isPending(mv.x0, mv.y0)) return true;
+      if (c.funds < chk.cost) return fail('Nicht genug Geld!');
+      this.flush();
+      this.queue = { tool: 'move', cells: [[mv.fx, mv.fy], [mv.x0, mv.y0]], marks: [[mv.x0, mv.y0, z.size]] };
+      this.flush();
+      drag.spent += chk.cost;
+      drag.err = null;
+      Sound.zone();
+      return true;
+    }
     let cost = tool.cost, size = 1, cx = x, cy = y;
     if (tool.zone) {
       const [x0, y0] = c.zoneOrigin(tool.zone, x, y);

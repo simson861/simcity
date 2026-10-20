@@ -272,7 +272,7 @@ class City {
   spend(c) { this.funds -= c; this.emit('funds'); }
 
   /** Einheitliche Werkzeug-Anwendung auf ein Feld. Rückgabe: {ok, cost, err} */
-  applyTool(tool, x, y) {
+  applyTool(tool, x, y, x2, y2) {
     switch (tool) {
       case 'bulldozer': return this.bulldoze(x, y);
       case 'road': return this.layLine(x, y, 'road');
@@ -280,6 +280,7 @@ class City {
       case 'wire': return this.layLine(x, y, 'wire');
       case 'park': return this.placePark(x, y);
       case 'upgrade': return this.upgradeRoad(x, y);
+      case 'move': return this.moveZone(x, y, x2, y2);
       // Kredite (Multiplayer: Mitspieler schicken sie als Aktion an den Gastgeber)
       case 'loan': return Object.assign({ cost: 0 }, this.takeLoan());
       case 'repay': return Object.assign({ cost: 0 }, this.repayLoan());
@@ -448,6 +449,44 @@ class City {
     }
     this.powerDirty = true;
     return z;
+  }
+
+  /** Erweiterung (nicht im Original): Gebäude samt Ausbaustufe an eine neue Stelle versetzen.
+   *  (x0,y0) = neue linke obere Ecke. Kosten: halber Baupreis + Abriss im Weg. */
+  checkMoveSite(z, x0, y0) {
+    if (x0 === z.x && y0 === z.y) return { ok: true, noop: true, cost: 0 };
+    const s = z.size;
+    if (x0 < 0 || y0 < 0 || x0 + s > W || y0 + s > H) return { ok: false, err: 'Zu nah am Kartenrand.' };
+    let clear = 0;
+    for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) {
+      const i = idx(x, y), k = this.tile[i];
+      if (k === T.DIRT || (k === T.ZONE && this.zid[i] === z.id)) continue;
+      if (isAutoClearK(k) && this.autoBulldoze) { clear++; continue; }
+      return { ok: false, err: isAutoClearK(k) ? 'Zuerst abreißen!' : 'Hier kann nicht gebaut werden.' };
+    }
+    return { ok: true, cost: Math.round(ZCOST[z.type] / 2) + clear };
+  }
+
+  moveZone(fx, fy, x0, y0) {
+    const z = this.zoneAt(fx, fy);
+    if (!z) return { ok: false, err: 'Hier steht kein Gebäude.' };
+    if (!Number.isInteger(x0) || !Number.isInteger(y0)) return { ok: false };
+    const chk = this.checkMoveSite(z, x0, y0);
+    if (!chk.ok || chk.noop) return chk;
+    if (!this.canAfford(chk.cost)) return { ok: false, err: 'Nicht genug Geld!', money: true };
+    this.spend(chk.cost);
+    for (let y = z.y; y < z.y + z.size; y++) for (let x = z.x; x < z.x + z.size; x++) {
+      this.zid[idx(x, y)] = -1;
+      this.setTile(x, y, T.DIRT, rand(3));
+    }
+    z.x = x0; z.y = y0;
+    for (let y = y0; y < y0 + z.size; y++) for (let x = x0; x < x0 + z.size; x++) {
+      this.setTile(x, y, T.ZONE, 0);
+      this.zid[idx(x, y)] = z.id;
+    }
+    if (z.type !== Z.COAL && z.type !== Z.NUCLEAR) z.powered = false;
+    this.powerDirty = true;
+    return { ok: true, cost: chk.cost, zone: true };
   }
 
   removeZone(z, fill) {
