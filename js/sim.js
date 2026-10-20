@@ -286,6 +286,62 @@ Object.assign(City.prototype, {
     }
   },
 
+  /**
+   * Wachstums-Check für das Abfrage-Werkzeug: prüft die Bedingungen aus doResidential/doCommercial/doIndustrial
+   * ohne den Spielzustand zu verändern. Rückgabe: [{ ok, text }]
+   */
+  zoneGrowthInfo(z) {
+    const out = [];
+    const add = (ok, text) => out.push({ ok, text });
+    const h = (zoneCX(z) >> 1) + (zoneCY(z) >> 1) * HW;
+    const lv = this.landValue[h], pol = this.pollution[h];
+    add(!!z.powered, z.powered ? 'Strom vorhanden' : 'Kein Strom – ohne Strom wächst keine Zone');
+    const road = this.findPerimeterRoad(z) >= 0;
+    add(road, road ? 'Straße am Zonenrand' : 'Keine Straße/Schiene direkt am Zonenrand – die Zone schrumpft');
+    if (road) {
+      // Probefahrt ohne Nebenwirkungen (Zufallszustand sichern)
+      const seed = RNG.s;
+      let reach = false;
+      for (let n = 0; n < 6 && !reach; n++) {
+        const st = this.findPerimeterRoad(z);
+        reach = this.tryDrive(st % W, (st / W) | 0, z.type, []);
+      }
+      RNG.s = seed;
+      const target = z.type === Z.RES ? 'Arbeitsplätze (Gewerbe/Industrie)' : z.type === Z.COM ? 'Kunden (Wohnen)' : 'Arbeitskräfte (Wohnen)';
+      add(reach, reach ? `${target} über die Straße erreichbar` : `${target} sind über die Straße nicht erreichbar (max. 30 Felder Fahrweg)`);
+    }
+    if (z.type === Z.RES) {
+      if (z.special) { add(true, 'Krankenhaus/Kirche – wächst nicht'); return out; }
+      const demand = this.resValve;
+      add(!this.resCap, this.resCap ? 'Ohne Stadion stoppt das Wachstum der Wohngebiete' : 'Nachfrage nicht durch fehlendes Stadion gebremst');
+      const v = Math.max(0, lv - pol);
+      const score = demand + (v * 32 > 6000 ? 6000 : v * 32) - 3000;
+      const needed = Math.max(0, Math.ceil((2650 - demand) / 32));
+      add(score > -350, score > -350
+        ? `Lage gut genug (Bodenwert ${lv} − Verschmutzung ${pol} = ${lv - pol})`
+        : `Lage zu schlecht: Bodenwert ${lv} − Verschmutzung ${pol} = ${lv - pol}, nötig wären bei dieser Nachfrage mehr als ${needed}`);
+      add(pol <= 128, pol <= 128 ? 'Verschmutzung erlaubt Wachstum' : `Zu viel Verschmutzung (${pol} > 128) – hier zieht niemand hin`);
+      if (z.den === 0 && this.housesCount(z) >= 8) {
+        add(this.popDensity[h] > 64, this.popDensity[h] > 64
+          ? 'Umgebung dicht genug für Mehrfamilienhäuser'
+          : `Umgebung zu dünn besiedelt für Mehrfamilienhäuser (Dichte ${this.popDensity[h]}, nötig > 64) – mehr bebaute Zonen in der Nähe`);
+      }
+      if (z.den >= 4) add(true, 'Höchste Dichte erreicht');
+    } else if (z.type === Z.COM) {
+      add(!this.comCap, this.comCap ? 'Ohne Flughafen stoppt das Wachstum des Gewerbes' : 'Nachfrage nicht durch fehlenden Flughafen gebremst');
+      const maxDen = lv >> 5;
+      add(z.den <= maxDen, z.den <= maxDen ? `Bodenwert ${lv} erlaubt Dichte bis ${Math.min(5, maxDen + 1)}` : `Bodenwert ${lv} zu niedrig für mehr Gewerbe (je 32 Punkte eine Stufe)`);
+      const rate = this.comRate[(zoneCX(z) >> 3) + (zoneCY(z) >> 3) * EW];
+      add(this.comValve + rate > -350, `Nachfrage ${this.comValve} + Lage im Stadtgebiet ${rate}`);
+      if (z.den >= 5) add(true, 'Höchste Dichte erreicht');
+    } else if (z.type === Z.IND) {
+      add(!this.indCap, this.indCap ? 'Ohne Seehafen stoppt das Wachstum der Industrie' : 'Nachfrage nicht durch fehlenden Seehafen gebremst');
+      add(this.indValve > -350, `Nachfrage Industrie: ${this.indValve}`);
+      if (z.den >= 4) add(true, 'Höchste Dichte erreicht');
+    }
+    return out;
+  },
+
   evalRes(z, traf) {
     if (traf < 0) return -3000;
     const h = (zoneCX(z) >> 1) + (zoneCY(z) >> 1) * HW;

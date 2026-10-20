@@ -1239,10 +1239,18 @@ const UI = {
       if (z.type === Z.COM || z.type === Z.IND) extra += `<span>Arbeitsplätze:</span><span class="r">${fmtNum(pop * 160)}</span>`;
       if (z.type === Z.COAL || z.type === Z.NUCLEAR) extra += `<span>Netzauslastung:</span><span class="r">${fmtNum(c.powerUsed)} / ${fmtNum(c.powerCapacity)}</span>`;
     }
+    // Wachstums-Check: warum wächst die Zone (nicht)?
+    let growth = '';
+    if (z && (z.type === Z.RES || z.type === Z.COM || z.type === Z.IND)) {
+      const info = c.zoneGrowthInfo(z);
+      growth = `<div style="margin-top:6px;font-weight:bold">Wachstums-Check</div><div class="sunken" style="font-size:11px">` +
+        info.map(r => `<div style="display:flex;gap:4px"><b style="color:${r.ok ? '#007000' : '#c00000'}">${r.ok ? '✓' : '✗'}</b><span>${r.text}</span></div>`).join('') +
+        `</div>`;
+    }
     const t = c.trafficDensity[h];
     this.closeWin('query');
     this.dialog('query', 'Abfrage', `
-      <div style="width:min(250px, calc(100vw - 40px))">
+      <div style="width:min(${growth ? 320 : 250}px, calc(100vw - 40px))">
         <div class="center" style="font-weight:bold;font-size:14px;margin-bottom:6px">${name}</div>
         <div class="grid2 sunken">
           <span>Dichte:</span><span class="r">${dens}</span>
@@ -1253,6 +1261,7 @@ const UI = {
           ${isRoadK(k) ? `<span>Verkehr:</span><span class="r">${t >= 192 ? 'Stau' : t >= 64 ? 'Dicht' : 'Gering'}</span>` : ''}
           ${extra}
         </div>
+        ${growth}
         <div class="note center">Feld ${x}, ${y}</div>
       </div>`, [['OK', null, true]], { modal: false });
   },
