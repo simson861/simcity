@@ -18,7 +18,7 @@ Die Simulation folgt den Regeln des Originals (wie im später als „Micropolis�
 - **Verkehr** Fahrtensimulation zwischen den Zonen, Staus, Verkehrshubschrauber
 - **Strom** Netz über Leitungen und aneinandergrenzende Zonen, Kraftwerkskapazität (Kohle 700 / Atom 2000 Felder),
   blinkender Blitz bei unversorgten Zonen
-- **Karten** Stadtplan, Zonen, Stromnetz, Verkehrsnetz, Bevölkerungsdichte, Wachstum, Verkehrsdichte,
+- **Karten** Stadtplan, Zonen, Stromnetz, Straßen & Verkehr, Schienennetz (mit Zonen ohne Bahnanschluss), Bevölkerungsdichte, Wachstum, Verkehrsdichte,
   Umweltverschmutzung, Kriminalität, Bodenwert, Feuerwehr- und Polizei-Abdeckung
 - **Grafiken** Wohnen, Gewerbe, Industrie, Geldfluss, Kriminalität, Umwelt (10 und 120 Jahre)
 - **Mehr Geld** (Erweiterung, nicht im Original): Steuern fließen monatlich in die Kasse; Steuerertrag einstellbar

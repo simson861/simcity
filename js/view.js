@@ -483,6 +483,8 @@ class View {
 }
 
 // ---------------- Übersichtskarte ----------------
+const RAIL_NEAR = 6;   // Zonen weiter weg gelten in der Schienen-Ansicht als „ohne Bahnanschluss“
+
 const MapRender = {
   ZONE_COL: ['', '#30c030', '#3070f0', '#e8d020', '#2040a0', '#e02020', '#c8c8c8', '#4880b0', '#505050', '#a8a8b0', '#9a9a9a'],
 
@@ -555,6 +557,25 @@ const MapRender = {
     return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
   },
 
+  /** Entfernung jedes Feldes zur nächsten Schiene (Breitensuche, bis RAIL_NEAR + 1). */
+  railDistances(c) {
+    const dist = new Uint8Array(W * H).fill(255);
+    const q = [];
+    for (let i = 0; i < W * H; i++) if (isRailK(c.tile[i])) { dist[i] = 0; q.push(i); }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h], dd = dist[i];
+      if (dd > RAIL_NEAR) continue;
+      const x = i % W, y = (i / W) | 0;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (!inBounds(nx, ny)) continue;
+        const n = idx(nx, ny);
+        if (dist[n] > dd + 1) { dist[n] = dd + 1; q.push(n); }
+      }
+    }
+    return dist;
+  },
+
   /** Zeichnet die ganze Karte in ein Canvas (Maßstab sc Pixel pro Feld). */
   draw(ctx, c, mode, sc) {
     const img = ctx.createImageData(W * sc, H * sc);
@@ -576,6 +597,7 @@ const MapRender = {
       const r = ((pa >> 16) & 255) * (1 - f) + (+m[0]) * f, g = ((pa >> 8) & 255) * (1 - f) + (+m[1]) * f, bb = (pa & 255) * (1 - f) + (+m[2]) * f;
       return `rgb(${r | 0},${g | 0},${bb | 0})`;
     };
+    const railDist = mode === 'rail' ? this.railDistances(c) : null;
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const k = c.tile[idx(x, y)];
       let col;
@@ -590,6 +612,14 @@ const MapRender = {
           const z = c.zones.get(c.zid[idx(x, y)]);
           col = !needsPower(z) ? '#ffffff' : (z.powered ? '#ffd020' : '#e02020');
         } else if (isWireK(k)) col = c.power[idx(x, y)] ? '#ffe880' : '#a0a0a0';
+        else col = isWaterK(k) ? '#203c78' : '#2a2a2a';
+      } else if (mode === 'rail') {
+        if (isRailK(k)) col = '#ffb030';
+        else if (k === T.ZONE) {
+          const z = c.zones.get(c.zid[idx(x, y)]);
+          const far = railDist && railDist[idx(x, y)] > RAIL_NEAR && z && z.type <= Z.IND;
+          col = far ? '#a03030' : '#4a5a4a';
+        } else if (isRoadK(k)) col = '#5a5a5a';
         else col = isWaterK(k) ? '#203c78' : '#2a2a2a';
       } else if (mode === 'transport') {
         if (isRoadK(k)) {

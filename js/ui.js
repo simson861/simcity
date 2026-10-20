@@ -24,11 +24,14 @@ const TOOLS = [
 ];
 
 const MAP_MODES = [
-  ['all', 'Stadtplan'], ['res', 'Wohngebiete'], ['com', 'Gewerbegebiete'], ['ind', 'Industriegebiete'],
-  ['power', 'Stromnetz'], ['transport', 'Verkehrsnetz'], ['popdens', 'Bevölkerungsdichte'], ['growth', 'Wachstumsrate'],
-  ['traffic', 'Verkehrsdichte'], ['pollution', 'Umweltverschmutzung'], ['crime', 'Kriminalität'], ['landvalue', 'Bodenwert'],
-  ['fire', 'Feuerwehr-Abdeckung'], ['police', 'Polizei-Abdeckung'],
+  // [Schlüssel, Name, Gruppe]
+  ['all', 'Stadtplan', 'Übersicht'], ['res', 'Wohngebiete', 'Übersicht'], ['com', 'Gewerbegebiete', 'Übersicht'], ['ind', 'Industriegebiete', 'Übersicht'],
+  ['power', 'Stromnetz', 'Netze'], ['transport', 'Straßen & Verkehr', 'Netze'], ['rail', 'Schienennetz', 'Netze'],
+  ['popdens', 'Bevölkerungsdichte', 'Analyse'], ['growth', 'Wachstumsrate', 'Analyse'], ['traffic', 'Verkehrsdichte', 'Analyse'],
+  ['pollution', 'Umweltverschmutzung', 'Analyse'], ['crime', 'Kriminalität', 'Analyse'], ['landvalue', 'Bodenwert', 'Analyse'],
+  ['fire', 'Feuerwehr-Abdeckung', 'Abdeckung'], ['police', 'Polizei-Abdeckung', 'Abdeckung'],
 ];
+const MAP_SCALE = 3;   // Pixel pro Feld in der Übersichtskarte (CSS skaliert auf die Fensterbreite)
 
 const SPEED_NAMES = ['Pause', 'Langsam', 'Mittel', 'Schnell'];
 
@@ -902,38 +905,41 @@ const UI = {
   // =================== Übersichtskarte ===================
   openMap() {
     const body = document.createElement('div');
-    body.className = 'row wrap';
-    body.style.alignItems = 'flex-start';
-    const cv = mkCanvas(W * 2, H * 2);
-    cv.className = 'sunken minimap';
+    body.className = 'mapwin';
+    const groups = [...new Set(MAP_MODES.map(m => m[2]))];
+    body.innerHTML = `
+      <div class="row maptop">
+        <button class="btn small" id="map-prev" title="Vorherige Ansicht">‹</button>
+        <select id="map-mode" title="Kartenansicht">${groups.map(g => `<optgroup label="${g}">${MAP_MODES.filter(m => m[2] === g)
+          .map(m => `<option value="${m[0]}">${m[1]}</option>`).join('')}</optgroup>`).join('')}</select>
+        <button class="btn small" id="map-next" title="Nächste Ansicht">›</button>
+        <label class="note" style="margin-left:auto"><input type="checkbox" id="map-onmain"> im Stadtfenster</label>
+      </div>`;
+    const cv = mkCanvas(W * MAP_SCALE, H * MAP_SCALE);
+    cv.className = 'sunken minimap mapcv';
     cv.title = 'Klicken oder ziehen, um den Ausschnitt zu verschieben';
-    cv.style.padding = '0'; cv.style.cursor = 'pointer';
-    cv.style.width = (W * 2) + 'px'; cv.style.height = (H * 2) + 'px';
-    const side = document.createElement('div');
-    side.className = 'col mapside';
-    for (const [m, label] of MAP_MODES) {
-      const b = document.createElement('button');
-      b.className = 'btn small mapbtn' + (m === this.mapMode ? ' on' : '');
-      b.textContent = label;
-      b.addEventListener('click', () => {
-        this.mapMode = m;
-        side.querySelectorAll('.mapbtn').forEach(x => x.classList.toggle('on', x === b));
-        this.view.overlay = this.mapOnMain && this.isOverlayMode(m) ? m : null;
-        this.drawMapWin(true);
-      });
-      side.appendChild(b);
-    }
-    const lab = document.createElement('label');
-    lab.className = 'note';
-    lab.innerHTML = '<input type="checkbox"> im Stadtfenster zeigen';
-    const chk = lab.querySelector('input');
+    body.appendChild(cv);
+    const legend = document.createElement('div');
+    legend.className = 'maplegend'; legend.id = 'map-legend';
+    body.appendChild(legend);
+    const sel = body.querySelector('#map-mode');
+    sel.value = this.mapMode;
+    const setMode = m => {
+      this.mapMode = m;
+      sel.value = m;
+      this.view.overlay = this.mapOnMain && this.isOverlayMode(m) ? m : null;
+      this.drawMapWin(true);
+    };
+    sel.addEventListener('change', () => setMode(sel.value));
+    const step = d => {
+      const i = MAP_MODES.findIndex(m => m[0] === this.mapMode);
+      setMode(MAP_MODES[(i + d + MAP_MODES.length) % MAP_MODES.length][0]);
+    };
+    body.querySelector('#map-prev').addEventListener('click', () => step(-1));
+    body.querySelector('#map-next').addEventListener('click', () => step(1));
+    const chk = body.querySelector('#map-onmain');
     chk.checked = this.mapOnMain;
     chk.addEventListener('change', () => { this.mapOnMain = chk.checked; this.view.overlay = chk.checked && this.isOverlayMode(this.mapMode) ? this.mapMode : null; });
-    side.appendChild(lab);
-    const legend = document.createElement('div');
-    legend.className = 'note'; legend.id = 'map-legend'; legend.style.width = '136px';
-    side.appendChild(legend);
-    body.appendChild(cv); body.appendChild(side);
     let dragging = false;
     const go = e => {
       const r = cv.getBoundingClientRect();
@@ -951,9 +957,26 @@ const UI = {
     cv.addEventListener('pointerup', () => { dragging = false; });
     cv.addEventListener('pointercancel', () => { dragging = false; });
     this.mapCanvas = cv;
-    this.mapImg = mkCanvas(W * 2, H * 2);
+    this.mapImg = mkCanvas(W * MAP_SCALE, H * MAP_SCALE);
+    this.injectMapCSS();
     this.win('map', 'Übersichtskarte', body, { x: 112, y: 30, onClose: () => { this.mapCanvas = null; this.view.overlay = null; } });
     this.drawMapWin(true);
+  },
+
+  injectMapCSS() {
+    if (document.getElementById('map-css')) return;
+    const st = document.createElement('style');
+    st.id = 'map-css';
+    st.textContent = `
+      .mapwin { width: min(480px, calc(100vw - 36px)); display: flex; flex-direction: column; gap: 6px; }
+      .mapwin .maptop { gap: 4px; flex-wrap: wrap; margin: 0; }
+      .mapwin select { font: inherit; padding: 2px; min-width: 0; flex: 1 1 150px; max-width: 220px; }
+      .mapwin .mapcv { width: 100%; height: auto; aspect-ratio: ${W} / ${H}; padding: 0; cursor: pointer; display: block; }
+      .maplegend { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; min-height: 18px; }
+      .maplegend .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid #000; vertical-align: -2px; margin-right: 4px; }
+      .maplegend .stat { flex-basis: 100%; color: #000080; }
+      .maplegend .grad { display: inline-block; width: 90px; height: 10px; border: 1px solid #000; vertical-align: -1px; margin: 0 4px; }`;
+    document.head.appendChild(st);
   },
 
   isOverlayMode(m) { return ['popdens', 'growth', 'traffic', 'pollution', 'crime', 'landvalue', 'fire', 'police'].includes(m); },
@@ -963,29 +986,63 @@ const UI = {
     const c = this.city;
     const now = performance.now();
     const age = now - (this.mapDrawnAt || 0);
+    const k = MAP_SCALE;
     if (force || (this.mapVersionDrawn !== c.mapVersion && age > 400) || (this.mapMode !== 'all' && age > 1000)) {
-      MapRender.draw(this.mapImg.getContext('2d'), c, this.mapMode, 2);
+      MapRender.draw(this.mapImg.getContext('2d'), c, this.mapMode, k);
       this.mapVersionDrawn = c.mapVersion;
       this.mapDrawnAt = now;
+      this.updateMapLegend();
     }
     const g = this.mapCanvas.getContext('2d');
     g.drawImage(this.mapImg, 0, 0);
-    // Sichtbereich
+    // Sichtbereich: gelber Rahmen mit schwarzer Kontur
     const v = this.view;
     const vw = v.canvas.width / v.ts, vh = v.canvas.height / v.ts;
-    g.strokeStyle = '#fff'; g.lineWidth = 1;
-    g.strokeRect(Math.round((v.camX - vw / 2) * 2) + 0.5, Math.round((v.camY - vh / 2) * 2) + 0.5, Math.round(vw * 2), Math.round(vh * 2));
+    const rx = Math.round((v.camX - vw / 2) * k), ry = Math.round((v.camY - vh / 2) * k);
+    const rw = Math.round(vw * k), rh = Math.round(vh * k);
+    g.lineWidth = 3; g.strokeStyle = '#000'; g.strokeRect(rx + 0.5, ry + 0.5, rw, rh);
+    g.lineWidth = 1.5; g.strokeStyle = '#ffff40'; g.strokeRect(rx + 0.5, ry + 0.5, rw, rh);
+  },
+
+  updateMapLegend() {
     const lg = document.getElementById('map-legend');
-    if (lg) {
-      const L = {
-        power: '<b style="color:#c90">■</b> versorgt<br><b style="color:#d00">■</b> ohne Strom',
-        transport: '<b style="color:#d00">■</b> Stau<br><b style="color:#f90">■</b> dichter Verkehr',
-        growth: '<b style="color:#2a2">■</b> Wachstum<br><b style="color:#d22">■</b> Rückgang',
-        landvalue: 'grün = hoch<br>braun = niedrig',
-        fire: 'rot = gut abgedeckt', police: 'blau = gut abgedeckt',
-      };
-      lg.innerHTML = L[this.mapMode] || (this.isOverlayMode(this.mapMode) ? 'gelb = niedrig<br>rot = hoch' : '');
+    if (!lg) return;
+    const c = this.city, s = c.stats;
+    const sw = (col, text) => `<span><span class="sw" style="background:${col}"></span>${text}</span>`;
+    const heat = (lo, hi) => `<span>${lo}<span class="grad" style="background:linear-gradient(90deg,#ffff60,#ff8020,#ff1a0a)"></span>${hi}</span>`;
+    let html = '';
+    switch (this.mapMode) {
+      case 'all': case 'res': case 'com': case 'ind':
+        html = sw('#30c030', 'Wohnen') + sw('#3070f0', 'Gewerbe') + sw('#e8d020', 'Industrie') + sw('#383838', 'Straße') +
+          sw('#6a4a2a', 'Schiene') + sw('#5ab845', 'Park') + sw('#2d5fcf', 'Wasser') + '<span class="note">helle Farbe = unbebaut</span>';
+        break;
+      case 'power': {
+        html = sw('#ffd020', 'versorgt') + sw('#e02020', 'ohne Strom') + sw('#ffffff', 'Kraftwerk') + sw('#ffe880', 'Leitung');
+        html += `<span class="stat">Kraftwerke: ${fmtNum(c.powerUsed)} von ${fmtNum(c.powerCapacity)} Feldern versorgt${c.brownout ? ' – <b style="color:#c00">überlastet!</b>' : ''}</span>`;
+        break;
+      }
+      case 'transport':
+        html = sw('#d0d0d0', 'Straße frei') + sw('#ffb040', 'dichter Verkehr') + sw('#ff4040', 'Stau') + sw('#a07040', 'Schiene');
+        html += `<span class="stat">Verkehrsindex: ${c.getTrafficAverage()} (ab 60 meldet der Berater Staus)</span>`;
+        break;
+      case 'rail': {
+        const zones = s.resZonePop + s.comZonePop + s.indZonePop;
+        const ok = !(zones > 50 && zones > s.railTotal);
+        html = sw('#ffb030', 'Schiene') + sw('#4a5a4a', `Zone mit Bahnanschluss (≤ ${RAIL_NEAR} Felder)`) + sw('#a03030', 'Zone ohne Bahnanschluss') + sw('#5a5a5a', 'Straße');
+        html += `<span class="stat">Schienenfelder: ${fmtNum(s.railTotal)} · Zonen: ${fmtNum(zones)} – ${ok
+          ? 'Schienennetz ausreichend'
+          : `<b style="color:#c00">zu klein</b>: der Berater meldet „Unzureichendes Schienennetz“, solange es weniger Schienenfelder als Zonen gibt (noch ${fmtNum(zones - s.railTotal)} Felder)`}</span>`;
+        break;
+      }
+      case 'growth': html = sw('#28c850', 'Wachstum') + sw('#e62828', 'Rückgang'); break;
+      case 'landvalue': html = sw('#50ff78', 'hoch') + sw('#b47850', 'niedrig') + `<span class="stat">Durchschnitt: ${c.landValueAverage}</span>`; break;
+      case 'fire': html = sw('#ff4020', 'gut abgedeckt') + '<span class="note">kräftiger = besser</span>'; break;
+      case 'police': html = sw('#3060ff', 'gut abgedeckt') + '<span class="note">kräftiger = besser</span>'; break;
+      case 'pollution': html = heat('niedrig', 'hoch') + `<span class="stat">Durchschnitt: ${c.pollutionAverage} (ab 60 gilt sie als sehr hoch)</span>`; break;
+      case 'crime': html = heat('niedrig', 'hoch') + `<span class="stat">Durchschnitt: ${c.crimeAverage} (ab 100 gilt sie als sehr hoch)</span>`; break;
+      default: html = heat('niedrig', 'hoch');
     }
+    lg.innerHTML = html;
   },
 
   // =================== Grafiken ===================
